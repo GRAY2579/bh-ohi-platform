@@ -16,7 +16,7 @@ $$ LANGUAGE plpgsql;
 
 -- 1. ENGAGEMENTS
 -- One row per client OHI engagement
-CREATE TABLE engagements (
+CREATE TABLE ohi_engagements (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,                              -- "Alcorn State SON — Spring 2026"
   client_name TEXT NOT NULL,                       -- "Alcorn State University"
@@ -37,15 +37,15 @@ CREATE TABLE engagements (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TRIGGER engagements_updated_at
-  BEFORE UPDATE ON engagements
+CREATE TRIGGER ohi_engagements_updated_at
+  BEFORE UPDATE ON ohi_engagements
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- 2. RESPONDENTS
 -- One row per person taking the OHI survey
-CREATE TABLE respondents (
+CREATE TABLE ohi_respondents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  engagement_id UUID NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+  engagement_id UUID NOT NULL REFERENCES ohi_engagements(id) ON DELETE CASCADE,
   token TEXT NOT NULL UNIQUE,                       -- unique survey URL token
   email TEXT,                                       -- optional; for invitation tracking only
   status TEXT NOT NULL DEFAULT 'pending'
@@ -60,46 +60,46 @@ CREATE TABLE respondents (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_respondents_engagement ON respondents(engagement_id);
-CREATE INDEX idx_respondents_token ON respondents(token);
-CREATE INDEX idx_respondents_status ON respondents(status);
+CREATE INDEX idx_ohi_respondents_engagement ON ohi_respondents(engagement_id);
+CREATE INDEX idx_ohi_respondents_token ON ohi_respondents(token);
+CREATE INDEX idx_ohi_respondents_status ON ohi_respondents(status);
 
 -- 3. RESPONSES
 -- One row per question per respondent (EAV model for flexibility)
-CREATE TABLE responses (
+CREATE TABLE ohi_responses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  respondent_id UUID NOT NULL REFERENCES respondents(id) ON DELETE CASCADE,
-  engagement_id UUID NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+  respondent_id UUID NOT NULL REFERENCES ohi_respondents(id) ON DELETE CASCADE,
+  engagement_id UUID NOT NULL REFERENCES ohi_engagements(id) ON DELETE CASCADE,
   question_key TEXT NOT NULL,                       -- "T1", "T2", ..., "S_T", "O1", etc.
   value_int INT CHECK (value_int BETWEEN 1 AND 5), -- Likert responses
   value_text TEXT,                                  -- Open-ended responses
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_responses_respondent ON responses(respondent_id);
-CREATE INDEX idx_responses_engagement ON responses(engagement_id);
-CREATE INDEX idx_responses_question ON responses(question_key);
-CREATE UNIQUE INDEX idx_responses_unique ON responses(respondent_id, question_key);
+CREATE INDEX idx_ohi_responses_respondent ON ohi_responses(respondent_id);
+CREATE INDEX idx_ohi_responses_engagement ON ohi_responses(engagement_id);
+CREATE INDEX idx_ohi_responses_question ON ohi_responses(question_key);
+CREATE UNIQUE INDEX idx_ohi_responses_unique ON ohi_responses(respondent_id, question_key);
 
 -- 4. DEMOGRAPHICS
 -- One row per demographic answer per respondent
-CREATE TABLE demographics (
+CREATE TABLE ohi_demographics (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  respondent_id UUID NOT NULL REFERENCES respondents(id) ON DELETE CASCADE,
-  engagement_id UUID NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+  respondent_id UUID NOT NULL REFERENCES ohi_respondents(id) ON DELETE CASCADE,
+  engagement_id UUID NOT NULL REFERENCES ohi_engagements(id) ON DELETE CASCADE,
   field_key TEXT NOT NULL,                          -- "role", "department", "years", etc.
   field_value TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_demographics_respondent ON demographics(respondent_id);
-CREATE INDEX idx_demographics_engagement ON demographics(engagement_id);
-CREATE UNIQUE INDEX idx_demographics_unique ON demographics(respondent_id, field_key);
+CREATE INDEX idx_ohi_demographics_respondent ON ohi_demographics(respondent_id);
+CREATE INDEX idx_ohi_demographics_engagement ON ohi_demographics(engagement_id);
+CREATE UNIQUE INDEX idx_ohi_demographics_unique ON ohi_demographics(respondent_id, field_key);
 
 -- 5. CONFLICT HOTSPOTS (computed after survey closes)
-CREATE TABLE conflict_hotspots (
+CREATE TABLE ohi_conflict_hotspots (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  engagement_id UUID NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+  engagement_id UUID NOT NULL REFERENCES ohi_engagements(id) ON DELETE CASCADE,
   intersection_key TEXT NOT NULL,                   -- "authority_paralysis", "relational_erosion", etc.
   severity_zone TEXT NOT NULL
     CHECK (severity_zone IN ('red_zone', 'watch_zone', 'pressure_point', 'clear')),
@@ -110,10 +110,10 @@ CREATE TABLE conflict_hotspots (
   computed_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_hotspots_engagement ON conflict_hotspots(engagement_id);
+CREATE INDEX idx_ohi_hotspots_engagement ON ohi_conflict_hotspots(engagement_id);
 
 -- 6. BENCHMARKS (Phase 2 — schema from Day 1)
-CREATE TABLE benchmarks (
+CREATE TABLE ohi_benchmarks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   question_key TEXT NOT NULL,
   pillar TEXT,
@@ -125,27 +125,27 @@ CREATE TABLE benchmarks (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_benchmarks_question ON benchmarks(question_key);
-CREATE INDEX idx_benchmarks_industry ON benchmarks(industry);
+CREATE INDEX idx_ohi_benchmarks_question ON ohi_benchmarks(question_key);
+CREATE INDEX idx_ohi_benchmarks_industry ON ohi_benchmarks(industry);
 
 -- 7. ROW LEVEL SECURITY
-ALTER TABLE engagements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE respondents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE responses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE demographics ENABLE ROW LEVEL SECURITY;
-ALTER TABLE conflict_hotspots ENABLE ROW LEVEL SECURITY;
-ALTER TABLE benchmarks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ohi_engagements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ohi_respondents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ohi_responses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ohi_demographics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ohi_conflict_hotspots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ohi_benchmarks ENABLE ROW LEVEL SECURITY;
 
 -- For MVP: anon key access (admin URL is security layer, same as bh360)
-CREATE POLICY "Allow all for anon" ON engagements FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for anon" ON respondents FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for anon" ON responses FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for anon" ON demographics FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for anon" ON conflict_hotspots FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for anon" ON benchmarks FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for anon" ON ohi_engagements FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for anon" ON ohi_respondents FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for anon" ON ohi_responses FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for anon" ON ohi_demographics FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for anon" ON ohi_conflict_hotspots FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for anon" ON ohi_benchmarks FOR ALL USING (true) WITH CHECK (true);
 
 -- 8. HELPER VIEW: Completion summary
-CREATE OR REPLACE VIEW completion_summary AS
+CREATE OR REPLACE VIEW ohi_completion_summary AS
 SELECT
   e.id AS engagement_id,
   e.name AS engagement_name,
@@ -157,12 +157,12 @@ SELECT
   ROUND(
     (COUNT(r.id) FILTER (WHERE r.status = 'completed'))::NUMERIC / NULLIF(COUNT(r.id), 0) * 100, 1
   ) AS completion_pct
-FROM engagements e
-LEFT JOIN respondents r ON r.engagement_id = e.id
+FROM ohi_engagements e
+LEFT JOIN ohi_respondents r ON r.engagement_id = e.id
 GROUP BY e.id, e.name, e.client_name;
 
 -- 9. HELPER VIEW: Pillar scores per engagement
-CREATE OR REPLACE VIEW pillar_scores AS
+CREATE OR REPLACE VIEW ohi_pillar_scores AS
 SELECT
   r.engagement_id,
   CASE
@@ -175,8 +175,8 @@ SELECT
   END AS pillar,
   ROUND(AVG(resp.value_int)::NUMERIC, 2) AS avg_score,
   COUNT(DISTINCT r.id) AS respondent_count
-FROM respondents r
-JOIN responses resp ON resp.respondent_id = r.id
+FROM ohi_respondents r
+JOIN ohi_responses resp ON resp.respondent_id = r.id
 WHERE r.status = 'completed'
   AND resp.value_int IS NOT NULL
   AND resp.question_key NOT LIKE '%_S'    -- exclude sentinels

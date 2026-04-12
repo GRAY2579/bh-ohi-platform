@@ -7,21 +7,28 @@ export default function Login() {
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = (e) => {
     e.preventDefault()
     setError('')
+    setSuccess(false)
     setLoading(true)
 
-    if (password === ADMIN_PASSWORD) {
-      localStorage.setItem('bh_ohi_auth', 'true')
-      navigate('/')
-    } else {
-      setError('Invalid password')
-    }
-
-    setLoading(false)
+    // Simulate a brief delay for authentication
+    setTimeout(() => {
+      if (password === ADMIN_PASSWORD) {
+        setSuccess(true)
+        localStorage.setItem('bh_ohi_auth', 'true')
+        setTimeout(() => {
+          navigate('/')
+        }, 500)
+      } else {
+        setError('Invalid password')
+      }
+      setLoading(false)
+    }, 300)
   }
 
   return (
@@ -31,50 +38,57 @@ export default function Login() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#F5F3F0',
-        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        backgroundColor: '#f0f2f5',
+        fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
       <div
         style={{
           width: '100%',
           maxWidth: '400px',
-          padding: '40px',
+          padding: '36px 32px',
           backgroundColor: '#FFFFFF',
-          borderRadius: '8px',
-          boxShadow: '0 2px 8px rgba(19, 27, 85, 0.08)',
+          borderRadius: '12px',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
         }}
       >
-        {/* Logo / Header */}
-        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <div
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <img
+            src="/bh-horse.png"
+            alt="Blue Hen Agency Logo"
             style={{
-              fontSize: '32px',
-              fontWeight: '700',
-              color: '#131B55',
-              marginBottom: '8px',
+              height: '64px',
+              marginBottom: '24px',
             }}
-          >
-            🦆
-          </div>
+          />
+        </div>
+
+        {/* Title and Subtitle */}
+        <div style={{ textAlign: 'center', marginBottom: '36px' }}>
           <h1
             style={{
-              fontSize: '24px',
-              fontWeight: '600',
-              color: '#131B55',
+              fontSize: '28px',
+              fontWeight: '700',
+              fontFamily: '"Libre Baskerville", serif',
               margin: '0 0 8px 0',
+              color: '#131B55',
+              letterSpacing: '-0.01em',
             }}
           >
-            Blue Hen
+            BH-
+            <span style={{ color: '#92C0E9' }}>OHI</span>
           </h1>
           <p
             style={{
               fontSize: '14px',
-              color: '#666',
+              fontWeight: '600',
+              color: '#C5A572',
               margin: '0',
+              letterSpacing: '0.02em',
             }}
           >
-            BH-OHI™ Admin Portal
+            Organizational Health Index
           </p>
         </div>
 
@@ -85,13 +99,13 @@ export default function Login() {
               htmlFor="password"
               style={{
                 display: 'block',
-                fontSize: '14px',
+                fontSize: '13px',
                 fontWeight: '500',
                 color: '#131B55',
                 marginBottom: '8px',
               }}
             >
-              Admin Password
+              Password
             </label>
             <input
               id="password"
@@ -99,23 +113,30 @@ export default function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter password"
-              disabled={loading}
+              disabled={loading || success}
               style={{
                 width: '100%',
                 padding: '12px 14px',
                 fontSize: '14px',
-                border: `1px solid ${error ? '#DC2626' : '#D1CCBD'}`,
-                borderRadius: '6px',
+                border: `1.5px solid ${error ? '#DC2626' : '#ddd'}`,
+                borderRadius: '8px',
                 boxSizing: 'border-box',
                 fontFamily: 'inherit',
-                transition: 'border-color 0.2s',
+                transition: 'border-color 0.2s, box-shadow 0.2s',
                 backgroundColor: '#FFFFFF',
+                outline: 'none',
               }}
               onFocus={(e) => {
-                if (!error) e.target.style.borderColor = '#92C0E9'
+                if (!error && !success) {
+                  e.target.style.borderColor = '#92C0E9'
+                  e.target.style.boxShadow = '0 0 0 3px rgba(146, 192, 233, 0.1)'
+                }
               }}
               onBlur={(e) => {
-                if (!error) e.target.style.borderColor = '#D1CCBD'
+                e.target.style.boxShadow = 'none'
+                if (!error && !success) {
+                  e.target.style.borderColor = '#ddd'
+                }
               }}
             />
           </div>
@@ -124,59 +145,81 @@ export default function Login() {
             <div
               style={{
                 marginBottom: '16px',
-                padding: '12px',
+                padding: '12px 14px',
                 backgroundColor: '#FEF2F2',
                 border: '1px solid #FECACA',
-                borderRadius: '6px',
+                borderRadius: '8px',
                 fontSize: '13px',
                 color: '#DC2626',
+                fontWeight: '500',
               }}
             >
               {error}
             </div>
           )}
 
+          {success && (
+            <div
+              style={{
+                marginBottom: '16px',
+                padding: '12px 14px',
+                backgroundColor: '#F0FDF4',
+                border: '1px solid #BBEF63',
+                borderRadius: '8px',
+                fontSize: '13px',
+                color: '#15803D',
+                fontWeight: '500',
+              }}
+            >
+              Authentication successful. Redirecting...
+            </div>
+          )}
+
           <button
             type="submit"
-            disabled={loading || !password}
+            disabled={loading || !password || success}
             style={{
               width: '100%',
               padding: '12px 16px',
               fontSize: '14px',
-              fontWeight: '600',
+              fontWeight: '700',
               color: '#FFFFFF',
-              backgroundColor: password ? '#1B8415' : '#A0A0A0',
+              backgroundColor: success ? '#22C55E' : '#131B55',
               border: 'none',
-              borderRadius: '6px',
-              cursor: password && !loading ? 'pointer' : 'not-allowed',
-              transition: 'background-color 0.2s',
-              opacity: loading ? 0.8 : 1,
+              borderRadius: '8px',
+              cursor: password && !loading && !success ? 'pointer' : 'not-allowed',
+              transition: 'background-color 0.2s, transform 0.1s',
+              letterSpacing: '0.02em',
+              opacity: loading || success ? 0.9 : 1,
             }}
             onMouseEnter={(e) => {
-              if (password && !loading) {
-                e.target.style.backgroundColor = '#157A0D'
+              if (password && !loading && !success) {
+                e.target.style.backgroundColor = '#0F1340'
+                e.target.style.transform = 'translateY(-1px)'
               }
             }}
             onMouseLeave={(e) => {
-              if (password && !loading) {
-                e.target.style.backgroundColor = '#1B8415'
+              if (password && !loading && !success) {
+                e.target.style.backgroundColor = '#131B55'
+                e.target.style.transform = 'translateY(0)'
               }
             }}
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {success ? 'Signed In' : loading ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
 
+        {/* Footer */}
         <p
           style={{
-            marginTop: '20px',
+            marginTop: '32px',
             fontSize: '12px',
             color: '#888',
             textAlign: 'center',
-            margin: '20px 0 0 0',
+            margin: '32px 0 0 0',
           }}
         >
-          Secure admin access only
+          © 2026 Blue Hen Agency LLC
         </p>
       </div>
     </div>

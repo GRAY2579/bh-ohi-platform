@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
@@ -8,1060 +8,852 @@ import {
   SENTINEL_QUESTIONS,
   OPEN_ENDED_QUESTIONS,
   DEMOGRAPHIC_FIELDS,
-  SURVEY_SECTIONS,
   LIKERT_SCALE,
 } from '../lib/constants'
 
-// ═══════════════════════════════════════════════════════════════════════════
-// BH-OHI™ Survey Component
-// ═══════════════════════════════════════════════════════════════════════════
+// ── Logo component ──────────────────────────────────────────
+function BHLogo({ size = 40, white = true }) {
+  return (
+    <img
+      src={white ? '/bh-horse-white.png' : '/bh-horse.png'}
+      alt="Blue Hen"
+      style={{
+        height: size,
+        width: 'auto',
+      }}
+    />
+  )
+}
 
-const Survey = () => {
+// ── Header with logo + title ────────────────────────────────
+function SurveyHeader({ respondent, engagement }) {
+  return (
+    <div className="survey-header">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 18, marginBottom: 4 }}>
+        <BHLogo size={52} />
+        <h1 style={{ margin: 0, fontSize: '2rem' }}>
+          BH-<span style={{ color: '#92C0E9' }}>OHI</span>
+        </h1>
+      </div>
+      <p style={{ margin: '6px 0 0', fontSize: '1.05rem', fontWeight: 600, color: '#C5A572', letterSpacing: '0.04em' }}>Organizational Health Index</p>
+      {engagement && (
+        <p style={{ fontSize: '0.95rem', marginTop: 6, color: '#92C0E9', opacity: 0.85 }}>
+          {engagement.client_name || engagement.org_name}
+          {engagement.org_unit && ` – ${engagement.org_unit}`}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ── Section names for progress display ──────────────────────
+const SECTION_NAMES = {
+  '-1': 'Welcome',
+  '0': 'About You',
+  '2': 'Trust',
+  '3': 'Structure',
+  '4': 'People',
+  '5': 'Vision',
+  '6': 'Communication',
+  '7': 'Additional',
+  '8': 'Your Perspective',
+  '9': 'Review',
+}
+
+// ── Color map for Likert buttons ────────────────────────────
+const LIKERT_COLORS = {
+  1: { bg: '#FEF2F2', border: '#FECACA', text: '#991B1B', selectedBg: '#DC2626' },
+  2: { bg: '#FFF7ED', border: '#FED7AA', text: '#9A3412', selectedBg: '#EA580C' },
+  3: { bg: '#FEFCE8', border: '#FDE68A', text: '#854D0E', selectedBg: '#CA8A04' },
+  4: { bg: '#F0FDF4', border: '#BBF7D0', text: '#166534', selectedBg: '#16A34A' },
+  5: { bg: '#ECFDF5', border: '#A7F3D0', text: '#065F46', selectedBg: '#059669' },
+}
+
+export default function Survey() {
   const { token } = useParams()
   const navigate = useNavigate()
 
-  // State Management
-  const [loading, setLoading] = useState(true)
   const [respondent, setRespondent] = useState(null)
   const [engagement, setEngagement] = useState(null)
-  const [error, setError] = useState(null)
-  const [currentSectionIndex, setCurrentSectionIndex] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
-  // Answers stored in memory: { [questionKey]: value }
-  const [answers, setAnswers] = useState({})
+  // -1=welcome, 0=demographics, 1-5=pillars, 6=sentinels, 7=open-ended, 8=review
+  const [currentSection, setCurrentSection] = useState(-1)
+  const [demographics, setDemographics] = useState({})
+  const [scores, setScores] = useState({})
+  const [openEnded, setOpenEnded] = useState({})
+  const [startTime] = useState(Date.now())
+  const [saving, setSaving] = useState(false)
 
-  // Brand colors
-  const COLORS = {
-    navy: '#131B55',
-    blue: '#92C0E9',
-    camel: '#884934',
-    white: '#FFFFFF',
-    lightGray: '#F5F5F5',
-    borderGray: '#E5E5E5',
-    darkGray: '#666666',
-    mediumGray: '#999999',
-  }
+  // Refs for auto-scroll
+  const questionRefs = useRef({})
 
-  // Likert scale colors
-  const LIKERT_COLORS = {
-    1: '#DC2626', // red
-    2: '#FB923C', // orange
-    3: '#FBBF24', // yellow
-    4: '#86EFAC', // light green
-    5: '#22C55E', // green
-  }
+  useEffect(() => { loadSurvey() }, [token])
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // INITIALIZATION: Load respondent & engagement data
-  // ─────────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const loadRespondent = async () => {
+  // ── Load survey + restore saved progress ──────────────────
+  async function loadSurvey() {
+    const { data, error: fetchErr } = await supabase
+      .from('ohi_respondents')
+      .select('*, ohi_engagements(*)')
+      .eq('token', token)
+      .single()
+
+    if (fetchErr || !data) {
+      setError('Invalid or expired survey link. Please check your URL and try again.')
+      setLoading(false)
+      return
+    }
+
+    if (data.status === 'completed') {
+      setError('This survey has already been submitted. Thank you for your participation!')
+      setLoading(false)
+      return
+    }
+
+    const now = new Date()
+    const eng = data.ohi_engagements
+    if (eng && eng.survey_open) {
+      const open = new Date(eng.survey_open)
+      const close = new Date(eng.survey_close)
+      close.setHours(23, 59, 59)
+
+      if (now < open) {
+        setError(`This survey opens on ${eng.survey_open}. Please return then.`)
+        setLoading(false)
+        return
+      }
+
+      if (now > close) {
+        setError('This survey has closed. The response window has ended.')
+        setLoading(false)
+        return
+      }
+    }
+
+    setRespondent(data)
+    setEngagement(eng)
+
+    // ── Restore saved draft progress ──────────────────────
+    if (data.draft_answers) {
       try {
-        if (!token) {
-          setError('No survey token provided. Invalid link.')
-          setLoading(false)
-          return
+        const draft = typeof data.draft_answers === 'string'
+          ? JSON.parse(data.draft_answers)
+          : data.draft_answers
+        if (draft.demographics) setDemographics(draft.demographics)
+        if (draft.scores) setScores(draft.scores)
+        if (draft.openEnded) setOpenEnded(draft.openEnded)
+        if (draft.currentSection !== undefined && draft.currentSection >= 0) {
+          // Skip section 1 (dead zone between demographics and pillars)
+          setCurrentSection(draft.currentSection === 1 ? 2 : draft.currentSection)
         }
-
-        // Fetch respondent by token
-        const { data: respData, error: respError } = await supabase
-          .from('respondents')
-          .select('*')
-          .eq('token', token)
-          .single()
-
-        if (respError || !respData) {
-          setError('Survey token not found. Please check your link.')
-          setLoading(false)
-          return
-        }
-
-        // Check if already completed
-        if (respData.status === 'completed') {
-          setError('This survey has already been completed. Thank you for your participation!')
-          setLoading(false)
-          return
-        }
-
-        // Fetch engagement
-        const { data: engData, error: engError } = await supabase
-          .from('engagements')
-          .select('*')
-          .eq('id', respData.engagement_id)
-          .single()
-
-        if (engError || !engData) {
-          setError('Engagement data not found.')
-          setLoading(false)
-          return
-        }
-
-        setRespondent(respData)
-        setEngagement(engData)
-
-        // Restore draft answers if they exist
-        if (respData.draft_answers) {
-          setAnswers(respData.draft_answers)
-        }
-
-        // Mark as in_progress if not already started
-        if (respData.status === 'pending') {
-          await supabase
-            .from('respondents')
-            .update({ status: 'in_progress', started_at: new Date().toISOString() })
-            .eq('id', respData.id)
-        }
-
-        setLoading(false)
-      } catch (err) {
-        console.error('Error loading respondent:', err)
-        setError('An error occurred. Please try again.')
-        setLoading(false)
-      }
+      } catch { /* ignore parse errors */ }
     }
 
-    loadRespondent()
-  }, [token])
+    await supabase.from('ohi_respondents').update({ status: 'in_progress' }).eq('id', data.id)
+    setLoading(false)
+  }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // AUTO-SAVE: Save answers to draft_answers and responses table
-  // ─────────────────────────────────────────────────────────────────────────
-  const saveAnswer = async (questionKey, value) => {
+  // ── Auto-save draft to Supabase (debounced) ───────────────
+  const saveTimeout = useRef(null)
+  const saveDraft = useCallback((newScores, newDemographics, newOpenEnded, newSection) => {
     if (!respondent) return
+    if (saveTimeout.current) clearTimeout(saveTimeout.current)
+    saveTimeout.current = setTimeout(async () => {
+      setSaving(true)
+      const draft = {
+        demographics: newDemographics,
+        scores: newScores,
+        openEnded: newOpenEnded,
+        currentSection: newSection,
+      }
+      await supabase.from('ohi_respondents')
+        .update({ draft_answers: draft })
+        .eq('id', respondent.id)
+      setSaving(false)
+    }, 1500)
+  }, [respondent])
 
-    try {
-      // Update in-memory answers
-      setAnswers((prev) => ({
-        ...prev,
-        [questionKey]: value,
-      }))
+  // ── Score setter with auto-save + auto-scroll ─────────────
+  function setScore(qKey, value) {
+    const newScores = { ...scores, [qKey]: value }
+    setScores(newScores)
+    saveDraft(newScores, demographics, openEnded, currentSection)
 
-      // Auto-save to Supabase
-      const isLikert = value && typeof value === 'number'
+    // Auto-scroll to next unanswered question after 350ms
+    setTimeout(() => {
+      const pillar = PILLARS[currentSection - 2]
+      if (!pillar) return
+      const questions = CORE_QUESTIONS.filter(q => q.pillar === pillar.key)
+      const nextQ = questions.find(q => q.key !== qKey && scores[q.key] === undefined)
+      if (nextQ && questionRefs.current[nextQ.key]) {
+        questionRefs.current[nextQ.key].scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }, 350)
+  }
 
-      if (isLikert) {
-        // Save to responses table (Likert: 1-5)
-        await supabase
-          .from('responses')
-          .upsert(
-            {
-              respondent_id: respondent.id,
-              engagement_id: respondent.engagement_id,
-              question_key: questionKey,
-              value_int: value,
-            },
-            { onConflict: 'respondent_id,question_key' }
-          )
+  // ── Section change with auto-save + scroll to top ─────────
+  function goToSection(s) {
+    setCurrentSection(s)
+    saveDraft(scores, demographics, openEnded, s)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function sectionComplete(sectionIdx) {
+    if (sectionIdx === 0) return DEMOGRAPHIC_FIELDS.every(f => demographics[f.key])
+    if (sectionIdx >= 2 && sectionIdx <= 6) {
+      const pillar = PILLARS[sectionIdx - 2]
+      const questions = CORE_QUESTIONS.filter(q => q.pillar === pillar.key)
+      return questions.every(q => scores[q.key] !== undefined)
+    }
+    if (sectionIdx === 7) {
+      const allQuestions = [...SENTINEL_QUESTIONS, ANCHOR_QUESTION]
+      return allQuestions.every(q => scores[q.key] !== undefined)
+    }
+    return true
+  }
+
+  function allSectionsComplete() {
+    if (!DEMOGRAPHIC_FIELDS.every(f => demographics[f.key])) return false
+    for (const pillar of PILLARS) {
+      const questions = CORE_QUESTIONS.filter(q => q.pillar === pillar.key)
+      if (!questions.every(q => scores[q.key] !== undefined)) return false
+    }
+    const allQuestions = [...SENTINEL_QUESTIONS, ANCHOR_QUESTION]
+    if (!allQuestions.every(q => scores[q.key] !== undefined)) return false
+    return OPEN_ENDED_QUESTIONS.every(q => openEnded[q.key])
+  }
+
+  // ── Retry helper with exponential backoff ──────────────────
+  async function retryWithBackoff(fn, maxRetries = 3) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const result = await fn()
+      if (!result.error) return result
+      if (attempt < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 8000)
+        await new Promise(r => setTimeout(r, delay))
       } else {
-        // Save to responses table (open-ended text)
-        await supabase
-          .from('responses')
-          .upsert(
-            {
-              respondent_id: respondent.id,
-              engagement_id: respondent.engagement_id,
-              question_key: questionKey,
-              value_text: value,
-            },
-            { onConflict: 'respondent_id,question_key' }
-          )
+        return result
       }
-
-      // Save draft answers to respondent record
-      await supabase
-        .from('respondents')
-        .update({ draft_answers: answers })
-        .eq('id', respondent.id)
-    } catch (err) {
-      console.error('Error saving answer:', err)
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SAVE DEMOGRAPHICS: Store role, department, years, employment_status
-  // ─────────────────────────────────────────────────────────────────────────
-  const saveDemographics = async () => {
-    if (!respondent) return
-
-    try {
-      for (const field of DEMOGRAPHIC_FIELDS) {
-        const value = answers[field.key]
-        if (value) {
-          await supabase
-            .from('demographics')
-            .upsert(
-              {
-                respondent_id: respondent.id,
-                engagement_id: respondent.engagement_id,
-                field_key: field.key,
-                field_value: value,
-              },
-              { onConflict: 'respondent_id,field_key' }
-            )
-        }
-      }
-    } catch (err) {
-      console.error('Error saving demographics:', err)
+  async function handleSubmit() {
+    if (!allSectionsComplete()) {
+      setError('Please complete all required questions before submitting.')
+      return
     }
-  }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SUBMIT SURVEY: Mark as completed, calculate duration
-  // ─────────────────────────────────────────────────────────────────────────
-  const submitSurvey = async () => {
-    if (!respondent) return
+    setSubmitting(true)
+    setError('')
 
-    try {
-      const startedAt = new Date(respondent.started_at)
-      const completedAt = new Date()
-      const durationSeconds = Math.floor((completedAt - startedAt) / 1000)
+    const duration = Math.round((Date.now() - startTime) / 1000)
 
-      await supabase
-        .from('respondents')
-        .update({
-          status: 'completed',
-          completed_at: completedAt.toISOString(),
-          duration_seconds: durationSeconds,
+    // Build responses data
+    const responsesData = []
+
+    // Add demographic responses
+    for (const field of DEMOGRAPHIC_FIELDS) {
+      if (demographics[field.key]) {
+        responsesData.push({
+          respondent_id: respondent.id,
+          engagement_id: respondent.engagement_id,
+          question_key: field.key,
+          value_text: demographics[field.key],
         })
-        .eq('id', respondent.id)
-
-      navigate('/survey/complete')
-    } catch (err) {
-      console.error('Error submitting survey:', err)
-      setError('Error submitting survey. Please try again.')
+      }
     }
+
+    // Add Likert responses (core, sentinel, anchor)
+    for (const question of [...CORE_QUESTIONS, ...SENTINEL_QUESTIONS, ANCHOR_QUESTION]) {
+      const val = scores[question.key]
+      if (val) {
+        responsesData.push({
+          respondent_id: respondent.id,
+          engagement_id: respondent.engagement_id,
+          question_key: question.key,
+          value_int: val,
+        })
+      }
+    }
+
+    // Add open-ended responses
+    for (const question of OPEN_ENDED_QUESTIONS) {
+      if (openEnded[question.key]) {
+        responsesData.push({
+          respondent_id: respondent.id,
+          engagement_id: respondent.engagement_id,
+          question_key: question.key,
+          value_text: openEnded[question.key],
+        })
+      }
+    }
+
+    const { error: insertErr } = await retryWithBackoff(
+      () => supabase.from('ohi_responses').insert(responsesData)
+    )
+
+    if (insertErr) {
+      setError('Failed to submit survey after multiple attempts. Please check your internet connection and try again.')
+      setSubmitting(false)
+      return
+    }
+
+    // Clear draft and mark complete
+    await retryWithBackoff(
+      () => supabase.from('ohi_respondents').update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        duration_seconds: duration,
+        draft_answers: null,
+      }).eq('id', respondent.id)
+    )
+    navigate('/survey/complete')
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // NAVIGATION
-  // ─────────────────────────────────────────────────────────────────────────
-  const goToSection = (index) => {
-    if (index >= 0 && index < SURVEY_SECTIONS.length) {
-      setCurrentSectionIndex(index)
-    }
-  }
-
-  const nextSection = async () => {
-    // Validate current section before moving forward
-    const currentSection = SURVEY_SECTIONS[currentSectionIndex]
-    if (currentSection.type === 'demographics') {
-      await saveDemographics()
-    }
-
-    if (currentSectionIndex < SURVEY_SECTIONS.length - 1) {
-      goToSection(currentSectionIndex + 1)
-      window.scrollTo(0, 0)
-    }
-  }
-
-  const previousSection = () => {
-    if (currentSectionIndex > 0) {
-      goToSection(currentSectionIndex - 1)
-      window.scrollTo(0, 0)
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // LOADING & ERROR STATES
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── LOADING STATE ──────────────────────────────────────────
   if (loading) {
     return (
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontFamily: 'Inter, sans-serif',
-          backgroundColor: COLORS.white,
-        }}
-      >
-        <div style={{ textAlign: 'center' }}>
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              border: `4px solid ${COLORS.lightGray}`,
-              borderTop: `4px solid ${COLORS.blue}`,
-              borderRadius: '50%',
-              margin: '0 auto 16px',
-              animation: 'spin 1s linear infinite',
-            }}
-          />
-          <p style={{ color: COLORS.mediumGray, fontSize: '16px' }}>Loading survey...</p>
-          <style>{`
-            @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-            }
-          `}</style>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontFamily: 'Inter, sans-serif',
-          backgroundColor: COLORS.white,
-          padding: '20px',
-        }}
-      >
-        <div style={{ maxWidth: '500px', textAlign: 'center' }}>
-          <div
-            style={{
-              fontSize: '48px',
-              marginBottom: '16px',
-              color: COLORS.camel,
-            }}
-          >
-            ⚠️
-          </div>
-          <h1 style={{ color: COLORS.navy, fontSize: '24px', marginBottom: '12px' }}>
-            Survey Unavailable
-          </h1>
-          <p style={{ color: COLORS.darkGray, fontSize: '16px', lineHeight: '1.6' }}>
-            {error}
-          </p>
-          <p style={{ color: COLORS.mediumGray, fontSize: '14px', marginTop: '16px' }}>
-            If you believe this is an error, please contact your administrator.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!respondent || !engagement) {
-    return (
-      <div style={{ minHeight: '100vh', fontFamily: 'Inter, sans-serif', color: COLORS.darkGray }}>
-        Loading...
-      </div>
-    )
-  }
-
-  // ═════════════════════════════════════════════════════════════════════════
-  // RENDER COMPONENTS
-  // ═════════════════════════════════════════════════════════════════════════
-
-  const currentSection = SURVEY_SECTIONS[currentSectionIndex]
-  const progressPercent = ((currentSectionIndex + 1) / SURVEY_SECTIONS.length) * 100
-
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        fontFamily: 'Inter, sans-serif',
-        backgroundColor: COLORS.white,
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* HEADER */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      <header
-        style={{
-          backgroundColor: COLORS.navy,
-          color: COLORS.white,
-          padding: '20px',
-          borderBottom: `4px solid ${COLORS.blue}`,
-        }}
-      >
-        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px', gap: '12px' }}>
-            {/* Logo placeholder */}
-            <div
-              style={{
-                width: '40px',
-                height: '40px',
-                backgroundColor: COLORS.blue,
-                borderRadius: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '24px',
-                fontWeight: 'bold',
-                flexShrink: 0,
-              }}
-            >
-              🐴
-            </div>
-            <div>
-              <h1
-                style={{
-                  margin: '0',
-                  fontSize: '24px',
-                  fontWeight: '700',
-                  letterSpacing: '-0.5px',
-                }}
-              >
-                BH-OHI<span style={{ color: COLORS.blue }}>™</span>
-              </h1>
-              <p style={{ margin: '4px 0 0 0', fontSize: '12px', opacity: 0.9 }}>
-                Organizational Health Index
-              </p>
+      <div className="survey-body">
+        <div className="survey-header">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+            <BHLogo size={36} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              <h1 style={{ margin: 0, fontSize: '1.125rem' }}>Loading survey...</h1>
+              <div className="survey-spinner" />
             </div>
           </div>
-          <p style={{ margin: '0', fontSize: '14px', opacity: 0.85 }}>
-            {engagement.client_name}
-            {engagement.org_unit && ` – ${engagement.org_unit}`}
-          </p>
         </div>
-      </header>
-
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* PROGRESS BAR */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      <div
-        style={{
-          backgroundColor: COLORS.lightGray,
-          height: '6px',
-          width: '100%',
-        }}
-      >
-        <div
-          style={{
-            backgroundColor: COLORS.blue,
-            height: '100%',
-            width: `${progressPercent}%`,
-            transition: 'width 0.3s ease',
-          }}
-        />
       </div>
-
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* MAIN CONTENT */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      <main
-        style={{
-          flex: 1,
-          maxWidth: '1200px',
-          width: '100%',
-          margin: '0 auto',
-          padding: '40px 20px',
-          boxSizing: 'border-box',
-        }}
-      >
-        {currentSection.type === 'welcome' && (
-          <WelcomeSection
-            engagement={engagement}
-            colors={COLORS}
-            onBegin={() => {
-              goToSection(currentSectionIndex + 1)
-              window.scrollTo(0, 0)
-            }}
-          />
-        )}
-
-        {currentSection.type === 'demographics' && (
-          <DemographicsSection
-            colors={COLORS}
-            answers={answers}
-            onAnswerChange={saveAnswer}
-          />
-        )}
-
-        {currentSection.type === 'pillar' && (
-          <PillarSection
-            pillarKey={currentSection.pillar}
-            colors={COLORS}
-            likertColors={LIKERT_COLORS}
-            answers={answers}
-            onAnswerChange={saveAnswer}
-          />
-        )}
-
-        {currentSection.type === 'sentinels' && (
-          <SentinelsSection
-            colors={COLORS}
-            likertColors={LIKERT_COLORS}
-            answers={answers}
-            onAnswerChange={saveAnswer}
-          />
-        )}
-
-        {currentSection.type === 'open_ended' && (
-          <OpenEndedSection
-            colors={COLORS}
-            answers={answers}
-            onAnswerChange={saveAnswer}
-          />
-        )}
-
-        {currentSection.type === 'review' && (
-          <ReviewSection
-            colors={COLORS}
-            answers={answers}
-            onSubmit={submitSurvey}
-          />
-        )}
-      </main>
-
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* NAVIGATION FOOTER */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      <footer
-        style={{
-          backgroundColor: COLORS.lightGray,
-          borderTop: `1px solid ${COLORS.borderGray}`,
-          padding: '20px',
-        }}
-      >
-        <div
-          style={{
-            maxWidth: '1200px',
-            margin: '0 auto',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '16px',
-          }}
-        >
-          <button
-            onClick={previousSection}
-            disabled={currentSectionIndex === 0}
-            style={{
-              padding: '10px 20px',
-              backgroundColor:
-                currentSectionIndex === 0 ? COLORS.lightGray : COLORS.white,
-              color: currentSectionIndex === 0 ? COLORS.mediumGray : COLORS.navy,
-              border: `1px solid ${COLORS.borderGray}`,
-              borderRadius: '6px',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: currentSectionIndex === 0 ? 'not-allowed' : 'pointer',
-              fontFamily: 'Inter, sans-serif',
-              transition: 'all 0.2s',
-            }}
-          >
-            ← Back
-          </button>
-
-          <div style={{ fontSize: '13px', color: COLORS.mediumGray }}>
-            {currentSectionIndex + 1} of {SURVEY_SECTIONS.length}
-          </div>
-
-          {currentSectionIndex < SURVEY_SECTIONS.length - 1 ? (
-            <button
-              onClick={nextSection}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: COLORS.blue,
-                color: COLORS.white,
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                fontFamily: 'Inter, sans-serif',
-                transition: 'all 0.2s',
-              }}
-              onMouseOver={(e) => {
-                e.target.style.backgroundColor = COLORS.navy
-              }}
-              onMouseOut={(e) => {
-                e.target.style.backgroundColor = COLORS.blue
-              }}
-            >
-              Next →
-            </button>
-          ) : (
-            <button
-              onClick={submitSurvey}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: COLORS.camel,
-                color: COLORS.white,
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                fontFamily: 'Inter, sans-serif',
-                transition: 'all 0.2s',
-              }}
-              onMouseOver={(e) => {
-                e.target.style.opacity = '0.9'
-              }}
-              onMouseOut={(e) => {
-                e.target.style.opacity = '1'
-              }}
-            >
-              Submit Survey
-            </button>
-          )}
-        </div>
-      </footer>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// WELCOME SECTION
-// ═══════════════════════════════════════════════════════════════════════════
-const WelcomeSection = ({ engagement, colors, onBegin }) => {
-  return (
-    <div style={{ maxWidth: '600px', margin: '0 auto', textAlign: 'center' }}>
-      <div
-        style={{
-          fontSize: '60px',
-          marginBottom: '24px',
-        }}
-      >
-        🏛️
-      </div>
-      <h1 style={{ color: colors.navy, fontSize: '32px', marginBottom: '12px', fontWeight: '700' }}>
-        Welcome to the OHI Assessment
-      </h1>
-      <p style={{ color: colors.darkGray, fontSize: '16px', lineHeight: '1.6', marginBottom: '24px' }}>
-        This comprehensive assessment takes approximately 15–20 minutes and explores five pillars of
-        organizational health: Trust, Structure, People, Vision, and Communication.
-      </p>
-      <div
-        style={{
-          backgroundColor: colors.lightGray,
-          padding: '20px',
-          borderRadius: '8px',
-          marginBottom: '32px',
-          textAlign: 'left',
-        }}
-      >
-        <h3 style={{ color: colors.navy, fontSize: '14px', fontWeight: '600', marginTop: 0 }}>
-          What to Expect:
-        </h3>
-        <ul
-          style={{
-            margin: '12px 0 0 0',
-            paddingLeft: '20px',
-            fontSize: '14px',
-            color: colors.darkGray,
-            lineHeight: '1.8',
-          }}
-        >
-          <li>Demographic questions (1 min)</li>
-          <li>40 core survey questions across 5 pillars (12 min)</li>
-          <li>5 additional questions (2 min)</li>
-          <li>5 open-ended reflections (5 min)</li>
-          <li>Review and submit (1 min)</li>
-        </ul>
-      </div>
-      <button
-        onClick={onBegin}
-        style={{
-          padding: '14px 32px',
-          backgroundColor: colors.blue,
-          color: colors.white,
-          border: 'none',
-          borderRadius: '6px',
-          fontSize: '16px',
-          fontWeight: '600',
-          cursor: 'pointer',
-          fontFamily: 'Inter, sans-serif',
-          transition: 'all 0.2s',
-        }}
-        onMouseOver={(e) => {
-          e.target.style.backgroundColor = colors.navy
-        }}
-        onMouseOut={(e) => {
-          e.target.style.backgroundColor = colors.blue
-        }}
-      >
-        Begin Assessment
-      </button>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// DEMOGRAPHICS SECTION
-// ═══════════════════════════════════════════════════════════════════════════
-const DemographicsSection = ({ colors, answers, onAnswerChange }) => {
-  return (
-    <div>
-      <h2 style={{ color: colors.navy, fontSize: '28px', fontWeight: '700', marginBottom: '8px' }}>
-        About You
-      </h2>
-      <p style={{ color: colors.mediumGray, fontSize: '14px', marginBottom: '32px' }}>
-        These questions help us understand the context of your responses.
-      </p>
-
-      <div style={{ display: 'grid', gap: '24px' }}>
-        {DEMOGRAPHIC_FIELDS.map((field) => (
-          <div key={field.key}>
-            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: colors.navy }}>
-              {field.label}
-            </label>
-            <select
-              value={answers[field.key] || ''}
-              onChange={(e) => onAnswerChange(field.key, e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                fontSize: '14px',
-                border: `1px solid ${colors.borderGray}`,
-                borderRadius: '6px',
-                fontFamily: 'Inter, sans-serif',
-                boxSizing: 'border-box',
-                backgroundColor: colors.white,
-                color: answers[field.key] ? colors.navy : colors.mediumGray,
-              }}
-            >
-              <option value="">Select an option...</option>
-              {field.options.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PILLAR SECTION
-// ═══════════════════════════════════════════════════════════════════════════
-const PillarSection = ({ pillarKey, colors, likertColors, answers, onAnswerChange }) => {
-  const pillar = PILLARS.find((p) => p.key === pillarKey)
-  if (!pillar) return null
-
-  const questions = CORE_QUESTIONS.filter((q) => q.pillar === pillarKey)
-
-  return (
-    <div>
-      <div style={{ marginBottom: '32px' }}>
-        <div
-          style={{
-            display: 'inline-block',
-            width: '48px',
-            height: '48px',
-            backgroundColor: pillar.color,
-            borderRadius: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: colors.white,
-            fontSize: '24px',
-            fontWeight: '700',
-            marginBottom: '12px',
-          }}
-        >
-          {pillar.icon}
-        </div>
-        <h2 style={{ color: colors.navy, fontSize: '28px', fontWeight: '700', margin: '0 0 8px 0' }}>
-          {pillar.name}
-        </h2>
-        <p style={{ color: colors.darkGray, fontSize: '14px', lineHeight: '1.6', margin: 0 }}>
-          {pillar.definition}
-        </p>
-      </div>
-
-      <div style={{ display: 'grid', gap: '28px' }}>
-        {questions.map((question) => (
-          <LikertQuestion
-            key={question.key}
-            question={question}
-            value={answers[question.key]}
-            onChange={(val) => onAnswerChange(question.key, val)}
-            colors={colors}
-            likertColors={likertColors}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SENTINELS SECTION (+ ANCHOR)
-// ═══════════════════════════════════════════════════════════════════════════
-const SentinelsSection = ({ colors, likertColors, answers, onAnswerChange }) => {
-  // Combine sentinels + anchor into "Additional Questions" section
-  const allQuestions = [...SENTINEL_QUESTIONS, ANCHOR_QUESTION]
-
-  return (
-    <div>
-      <h2 style={{ color: colors.navy, fontSize: '28px', fontWeight: '700', marginBottom: '8px' }}>
-        Additional Questions
-      </h2>
-      <p style={{ color: colors.mediumGray, fontSize: '14px', marginBottom: '32px' }}>
-        Please respond to the following cross-pillar questions.
-      </p>
-
-      <div style={{ display: 'grid', gap: '28px' }}>
-        {allQuestions.map((question) => (
-          <LikertQuestion
-            key={question.key}
-            question={question}
-            value={answers[question.key]}
-            onChange={(val) => onAnswerChange(question.key, val)}
-            colors={colors}
-            likertColors={likertColors}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// OPEN-ENDED SECTION
-// ═══════════════════════════════════════════════════════════════════════════
-const OpenEndedSection = ({ colors, answers, onAnswerChange }) => {
-  return (
-    <div>
-      <h2 style={{ color: colors.navy, fontSize: '28px', fontWeight: '700', marginBottom: '8px' }}>
-        Your Perspective
-      </h2>
-      <p style={{ color: colors.mediumGray, fontSize: '14px', marginBottom: '32px' }}>
-        Please share your thoughts in your own words. There are no right or wrong answers.
-      </p>
-
-      <div style={{ display: 'grid', gap: '28px' }}>
-        {OPEN_ENDED_QUESTIONS.map((question) => (
-          <div key={question.key}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: '600',
-                marginBottom: '8px',
-                color: colors.navy,
-              }}
-            >
-              {question.text}
-            </label>
-            <textarea
-              value={answers[question.key] || ''}
-              onChange={(e) => onAnswerChange(question.key, e.target.value)}
-              placeholder="Your response..."
-              style={{
-                width: '100%',
-                minHeight: '120px',
-                padding: '12px',
-                fontSize: '14px',
-                border: `1px solid ${colors.borderGray}`,
-                borderRadius: '6px',
-                fontFamily: 'Inter, sans-serif',
-                boxSizing: 'border-box',
-                color: colors.navy,
-                resize: 'vertical',
-              }}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// LIKERT QUESTION COMPONENT
-// ═══════════════════════════════════════════════════════════════════════════
-const LikertQuestion = ({ question, value, onChange, colors, likertColors }) => {
-  return (
-    <div>
-      <p style={{ fontSize: '14px', fontWeight: '500', color: colors.navy, margin: '0 0 12px 0' }}>
-        {question.key}. {question.text}
-      </p>
-      {question.reverseCoded && (
-        <p style={{ fontSize: '12px', fontStyle: 'italic', color: colors.mediumGray, margin: '0 0 12px 0' }}>
-          {question.note}
-        </p>
-      )}
-      <div
-        style={{
-          display: 'flex',
-          gap: '8px',
-          flexWrap: 'wrap',
-        }}
-      >
-        {LIKERT_SCALE.map((scale) => (
-          <button
-            key={scale.value}
-            onClick={() => onChange(scale.value)}
-            style={{
-              padding: '10px 14px',
-              backgroundColor:
-                value === scale.value ? likertColors[scale.value] : colors.white,
-              color:
-                value === scale.value ? colors.white : colors.navy,
-              border: `2px solid ${value === scale.value ? likertColors[scale.value] : colors.borderGray}`,
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontWeight: value === scale.value ? '600' : '500',
-              cursor: 'pointer',
-              fontFamily: 'Inter, sans-serif',
-              transition: 'all 0.15s',
-              minWidth: '60px',
-              textAlign: 'center',
-            }}
-            title={scale.label}
-            onMouseOver={(e) => {
-              if (value !== scale.value) {
-                e.target.style.borderColor = likertColors[scale.value]
-                e.target.style.backgroundColor = likertColors[scale.value]
-                e.target.style.color = colors.white
-              }
-            }}
-            onMouseOut={(e) => {
-              if (value !== scale.value) {
-                e.target.style.borderColor = colors.borderGray
-                e.target.style.backgroundColor = colors.white
-                e.target.style.color = colors.navy
-              }
-            }}
-          >
-            {scale.value}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// REVIEW & SUBMIT SECTION
-// ═══════════════════════════════════════════════════════════════════════════
-const ReviewSection = ({ colors, answers, onSubmit }) => {
-  const completionStatus = {
-    demographics: DEMOGRAPHIC_FIELDS.every((f) => answers[f.key]),
-    trust: CORE_QUESTIONS.filter((q) => q.pillar === 'trust').every((q) =>
-      answers[q.key]
-    ),
-    structure: CORE_QUESTIONS.filter((q) => q.pillar === 'structure').every((q) =>
-      answers[q.key]
-    ),
-    people: CORE_QUESTIONS.filter((q) => q.pillar === 'people').every((q) =>
-      answers[q.key]
-    ),
-    vision: CORE_QUESTIONS.filter((q) => q.pillar === 'vision').every((q) =>
-      answers[q.key]
-    ),
-    communication: CORE_QUESTIONS.filter((q) => q.pillar === 'communication').every(
-      (q) => answers[q.key]
-    ),
-    sentinels: [...SENTINEL_QUESTIONS, ANCHOR_QUESTION].every((q) =>
-      answers[q.key]
-    ),
-    openEnded: OPEN_ENDED_QUESTIONS.every((q) => answers[q.key]),
+    )
   }
 
-  const allComplete = Object.values(completionStatus).every((v) => v === true)
-
-  const sectionLabels = {
-    demographics: 'About You',
-    trust: 'Trust',
-    structure: 'Structure',
-    people: 'People',
-    vision: 'Vision',
-    communication: 'Communication',
-    sentinels: 'Additional Questions',
-    openEnded: 'Your Perspective',
+  // ── ERROR STATE (no respondent) ─────────────────────────────────
+  if (error && !respondent) {
+    return (
+      <div className="survey-body">
+        <SurveyHeader />
+        <div className="container-narrow mt-3">
+          <div className="alert alert-error">{error}</div>
+        </div>
+      </div>
+    )
   }
 
-  return (
-    <div>
-      <h2 style={{ color: colors.navy, fontSize: '28px', fontWeight: '700', marginBottom: '8px' }}>
-        Review & Submit
-      </h2>
-      <p style={{ color: colors.mediumGray, fontSize: '14px', marginBottom: '32px' }}>
-        Please confirm that you have completed all sections before submitting.
-      </p>
+  // ── PROGRESS ───────────────────────────────────────────────
+  // Sections: -1(welcome), 0(demo), 2-6(pillars), 7(sentinels), 8(open), 9(review) — 10 total, skip 1
+  const SECTION_ORDER = [-1, 0, 2, 3, 4, 5, 6, 7, 8, 9]
+  const sectionIndex = SECTION_ORDER.indexOf(currentSection)
+  const progressPct = sectionIndex <= 0 ? 0 : Math.round((sectionIndex / (SECTION_ORDER.length - 1)) * 100)
 
-      <div
-        style={{
-          backgroundColor: colors.lightGray,
-          padding: '24px',
-          borderRadius: '8px',
-          marginBottom: '32px',
-        }}
-      >
-        <h3 style={{ color: colors.navy, fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>
-          Completion Status
-        </h3>
-        <div style={{ display: 'grid', gap: '12px' }}>
-          {Object.entries(completionStatus).map(([key, isComplete]) => (
-            <div
-              key={key}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '10px',
-                backgroundColor: colors.white,
-                borderRadius: '6px',
-                fontSize: '14px',
-              }}
-            >
-              <div
-                style={{
-                  width: '20px',
-                  height: '20px',
-                  borderRadius: '50%',
-                  backgroundColor: isComplete ? '#22C55E' : colors.borderGray,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: colors.white,
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  flexShrink: 0,
-                }}
-              >
-                {isComplete ? '✓' : ''}
-              </div>
-              <span style={{ color: isComplete ? colors.navy : colors.mediumGray, fontWeight: isComplete ? '500' : '400' }}>
-                {sectionLabels[key]}
+  return (
+    <div className="survey-body">
+      <SurveyHeader respondent={respondent} engagement={engagement} />
+
+      {/* Sticky progress bar */}
+      {currentSection >= 0 && (
+        <div className="survey-progress sticky-progress">
+          <div className="survey-progress-inner">
+            <div className="survey-progress-bar">
+              <div className="survey-progress-fill" style={{ width: `${progressPct}%` }} />
+            </div>
+            <div className="survey-progress-labels">
+              <span className="survey-progress-section">
+                {SECTION_NAMES[currentSection.toString()] || `Section ${currentSection}`}
               </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {saving && (
+                  <span style={{ fontSize: '0.6875rem', color: '#92C0E9', fontWeight: 500 }}>
+                    Saving...
+                  </span>
+                )}
+                <span className="survey-progress-pct">{progressPct}%</span>
+              </div>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {!allComplete && (
-        <div
-          style={{
-            backgroundColor: '#FEF2F2',
-            border: `1px solid #FCA5A5`,
-            borderRadius: '8px',
-            padding: '16px',
-            marginBottom: '32px',
-            fontSize: '14px',
-            color: '#991B1B',
-          }}
-        >
-          <strong>Note:</strong> Some sections are incomplete. Please go back and complete all
-          questions before submitting.
+          </div>
         </div>
       )}
 
-      <div
-        style={{
-          backgroundColor: '#F0FDF4',
-          border: `1px solid #86EFAC`,
-          borderRadius: '8px',
-          padding: '16px',
-          fontSize: '14px',
-          color: '#15803D',
-          lineHeight: '1.6',
-        }}
-      >
-        <strong>Thank you!</strong> Your responses are valuable to our school's growth and
-        improvement. All responses are confidential and will be analyzed in aggregate with other
-        respondents' data.
+      {error && (
+        <div className="container-narrow mt-2">
+          <div className="alert alert-error">{error}</div>
+        </div>
+      )}
+
+      <div className="container-narrow mt-3" style={{ paddingBottom: 80 }}>
+
+        {/* ════ WELCOME ════════════════════════════════════════ */}
+        {currentSection === -1 && (
+          <div className="survey-card welcome-card" key="welcome">
+            <div style={{ marginBottom: 24 }}>
+              <BHLogo size={64} white={false} />
+            </div>
+            <h2>Welcome to the OHI Assessment</h2>
+
+            <p className="welcome-intro">
+              This comprehensive assessment takes approximately 15–20 minutes and explores five pillars of
+              organizational health: Trust, Structure, People, Vision, and Communication.
+            </p>
+
+            <div className="welcome-details">
+              <div className="welcome-detail-item">
+                <div className="welcome-detail-icon" style={{ background: '#FFF7ED' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C5A572" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <div className="welcome-detail-text">
+                  <strong>15–20 minutes</strong>
+                  Complete demographic questions and respond to 46 Likert-scale items across five pillars.
+                </div>
+              </div>
+              <div className="welcome-detail-item">
+                <div className="welcome-detail-icon" style={{ background: '#F0FDF4' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </div>
+                <div className="welcome-detail-text">
+                  <strong>1–5 Scale</strong>
+                  Rate each item from 1 (Strongly Disagree) to 5 (Strongly Agree). A score of 3 means "Neutral."
+                </div>
+              </div>
+              <div className="welcome-detail-item">
+                <div className="welcome-detail-icon" style={{ background: '#EFF6FF' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#131B55" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+                <div className="welcome-detail-text">
+                  <strong>Confidential</strong>
+                  Your individual responses are never shared. They are analyzed in aggregate with other respondents.
+                </div>
+              </div>
+              <div className="welcome-detail-item">
+                <div className="welcome-detail-icon" style={{ background: '#EFF6FF' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#131B55" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                </div>
+                <div className="welcome-detail-text">
+                  <strong>Auto-Saved</strong>
+                  Your progress is saved automatically. You can close this tab and return later to pick up where you left off.
+                </div>
+              </div>
+              <div className="welcome-detail-item">
+                <div className="welcome-detail-icon" style={{ background: '#F5F5F5' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                <div className="welcome-detail-text">
+                  <strong>Honest Reflection</strong>
+                  Your candid feedback is essential for identifying strengths and areas for improvement.
+                </div>
+              </div>
+              {engagement?.survey_close && (
+                <div className="welcome-detail-item">
+                  <div className="welcome-detail-icon" style={{ background: '#FDF2F8' }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9C0006" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  </div>
+                  <div className="welcome-detail-text">
+                    <strong>Due {engagement.survey_close}</strong>
+                    Please complete the survey before the closing date.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              className="btn btn-primary"
+              style={{ padding: '16px 56px', fontSize: '1rem', borderRadius: 10 }}
+              onClick={() => goToSection(0)}
+            >
+              {Object.keys(scores).length > 0 ? 'Continue Assessment' : 'Begin Assessment'}
+            </button>
+          </div>
+        )}
+
+        {/* ════ DEMOGRAPHICS ═════════════════════════════════════ */}
+        {currentSection === 0 && (
+          <div className="survey-card" key="demographics">
+            <div className="competency-header">
+              <h2>About You</h2>
+              <p>These questions help us understand the context of your responses.</p>
+            </div>
+            {DEMOGRAPHIC_FIELDS.map((field) => (
+              <div key={field.key} style={{ marginBottom: 24 }}>
+                <label className="form-label">
+                  {field.label}
+                </label>
+                <select
+                  className="form-input"
+                  value={demographics[field.key] || ''}
+                  onChange={(e) => {
+                    const newDemo = { ...demographics, [field.key]: e.target.value }
+                    setDemographics(newDemo)
+                    saveDraft(scores, newDemo, openEnded, currentSection)
+                  }}
+                >
+                  <option value="">Select an option...</option>
+                  {field.options.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+            <div className="survey-nav">
+              <button className="btn btn-outline" onClick={() => goToSection(-1)}>
+                Back
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={!sectionComplete(0)}
+                onClick={() => goToSection(2)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ════ SECTIONS 2-6: PILLARS ════════════════════════ */}
+        {currentSection >= 2 && currentSection <= 6 && (() => {
+          const pillar = PILLARS[currentSection - 2]
+          const questions = CORE_QUESTIONS.filter(q => q.pillar === pillar.key)
+          const answeredCount = questions.filter(q => scores[q.key] !== undefined).length
+          return (
+            <div className="survey-card" key={`pillar-${currentSection}`}>
+              <div className="competency-header">
+                <h2>{pillar.name}</h2>
+                <p>
+                  {pillar.definition}
+                  <span style={{ float: 'right', fontSize: '0.8125rem', color: '#884934', fontWeight: 600 }}>
+                    {answeredCount} of {questions.length}
+                  </span>
+                </p>
+              </div>
+
+              {questions.map((q, qi) => {
+                const val = scores[q.key]
+                const isAnswered = val !== undefined
+                return (
+                  <div
+                    key={q.key}
+                    ref={el => questionRefs.current[q.key] = el}
+                    className={`question-item ${isAnswered ? 'answered' : ''}`}
+                  >
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
+                      <span className={`question-number ${isAnswered ? 'done' : ''}`}>
+                        {isAnswered ? '\u2713' : qi + 1}
+                      </span>
+                      <span className="question-text" style={{ margin: 0 }}>
+                        {q.text}
+                      </span>
+                    </div>
+                    <fieldset className="likert-row" role="radiogroup" aria-label={`Rating for: ${q.text}`} style={{ border: 'none', padding: 0, margin: 0 }}>
+                      <legend className="sr-only">Rate: {q.text}</legend>
+                      {LIKERT_SCALE.map(opt => {
+                        const isSelected = val === opt.value
+                        const c = LIKERT_COLORS[opt.value]
+                        return (
+                          <div key={opt.value} className="likert-btn">
+                            <input
+                              type="radio"
+                              name={`${q.key}`}
+                              id={`${q.key}_${opt.value}`}
+                              value={opt.value}
+                              checked={isSelected}
+                              onChange={() => setScore(q.key, opt.value)}
+                              aria-label={`${opt.value} — ${opt.label}`}
+                            />
+                            <label
+                              htmlFor={`${q.key}_${opt.value}`}
+                              style={isSelected
+                                ? { background: c.selectedBg, borderColor: c.selectedBg, color: '#fff',
+                                    boxShadow: `0 4px 14px ${c.selectedBg}40`, transform: 'translateY(-2px)' }
+                                : { background: c.bg, borderColor: c.border, color: c.text }
+                              }
+                            >
+                              <span className="likert-value" style={isSelected ? { color: '#fff' } : { color: c.text }}>
+                                {opt.value}
+                              </span>
+                              <span className="likert-label" style={isSelected ? { color: 'rgba(255,255,255,0.85)' } : { color: c.text, opacity: 0.7 }}>
+                                {opt.label}
+                              </span>
+                            </label>
+                          </div>
+                        )
+                      })}
+                    </fieldset>
+                  </div>
+                )
+              })}
+
+              <div className="survey-nav">
+                <button className="btn btn-outline" onClick={() => goToSection(currentSection === 2 ? 0 : currentSection - 1)}>
+                  Back
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={!sectionComplete(currentSection)}
+                  onClick={() => goToSection(currentSection + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* ════ SECTION 7: SENTINELS + ANCHOR ════════════════ */}
+        {currentSection === 7 && (() => {
+          const allQuestions = [...SENTINEL_QUESTIONS, ANCHOR_QUESTION]
+          const answeredCount = allQuestions.filter(q => scores[q.key] !== undefined).length
+          return (
+            <div className="survey-card" key="sentinels">
+              <div className="competency-header">
+                <h2>Additional Questions</h2>
+                <p>
+                  Please respond to the following cross-pillar questions.
+                  <span style={{ float: 'right', fontSize: '0.8125rem', color: '#884934', fontWeight: 600 }}>
+                    {answeredCount} of {allQuestions.length}
+                  </span>
+                </p>
+              </div>
+
+              {allQuestions.map((q, qi) => {
+                const val = scores[q.key]
+                const isAnswered = val !== undefined
+                return (
+                  <div
+                    key={q.key}
+                    ref={el => questionRefs.current[q.key] = el}
+                    className={`question-item ${isAnswered ? 'answered' : ''}`}
+                  >
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
+                      <span className={`question-number ${isAnswered ? 'done' : ''}`}>
+                        {isAnswered ? '\u2713' : qi + 1}
+                      </span>
+                      <span className="question-text" style={{ margin: 0 }}>
+                        {q.text}
+                      </span>
+                    </div>
+                    {q.reverseCoded && (
+                      <p style={{ fontSize: '0.8125rem', fontStyle: 'italic', color: '#999', margin: '0 0 12px 0' }}>
+                        Note: This item is reverse-coded.
+                      </p>
+                    )}
+                    <fieldset className="likert-row" role="radiogroup" aria-label={`Rating for: ${q.text}`} style={{ border: 'none', padding: 0, margin: 0 }}>
+                      <legend className="sr-only">Rate: {q.text}</legend>
+                      {LIKERT_SCALE.map(opt => {
+                        const isSelected = val === opt.value
+                        const c = LIKERT_COLORS[opt.value]
+                        return (
+                          <div key={opt.value} className="likert-btn">
+                            <input
+                              type="radio"
+                              name={`${q.key}`}
+                              id={`${q.key}_${opt.value}`}
+                              value={opt.value}
+                              checked={isSelected}
+                              onChange={() => setScore(q.key, opt.value)}
+                              aria-label={`${opt.value} — ${opt.label}`}
+                            />
+                            <label
+                              htmlFor={`${q.key}_${opt.value}`}
+                              style={isSelected
+                                ? { background: c.selectedBg, borderColor: c.selectedBg, color: '#fff',
+                                    boxShadow: `0 4px 14px ${c.selectedBg}40`, transform: 'translateY(-2px)' }
+                                : { background: c.bg, borderColor: c.border, color: c.text }
+                              }
+                            >
+                              <span className="likert-value" style={isSelected ? { color: '#fff' } : { color: c.text }}>
+                                {opt.value}
+                              </span>
+                              <span className="likert-label" style={isSelected ? { color: 'rgba(255,255,255,0.85)' } : { color: c.text, opacity: 0.7 }}>
+                                {opt.label}
+                              </span>
+                            </label>
+                          </div>
+                        )
+                      })}
+                    </fieldset>
+                  </div>
+                )
+              })}
+
+              <div className="survey-nav">
+                <button className="btn btn-outline" onClick={() => goToSection(6)}>Back</button>
+                <button
+                  className="btn btn-primary"
+                  disabled={!sectionComplete(7)}
+                  onClick={() => goToSection(8)}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* ════ SECTION 8: OPEN-ENDED ═════════════════════════ */}
+        {currentSection === 8 && (
+          <div className="survey-card" key="open">
+            <div className="competency-header">
+              <h2>Your Perspective</h2>
+              <p>Please share your thoughts in your own words. There are no right or wrong answers.</p>
+            </div>
+            {OPEN_ENDED_QUESTIONS.map((q, qi) => (
+              <div key={q.key} className="open-ended-group" style={{ marginBottom: 28 }}>
+                <div className="open-ended-label" style={{ marginBottom: 12 }}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 24, height: 24, borderRadius: '50%', background: '#E8EDF4',
+                    color: '#131B55', fontSize: '0.7rem', fontWeight: 700, marginRight: 10,
+                    verticalAlign: 'middle',
+                  }}>{qi + 1}</span>
+                  {q.text}
+                </div>
+                <textarea
+                  className="open-ended-textarea"
+                  rows={4}
+                  value={openEnded[q.key] || ''}
+                  onChange={e => {
+                    const newOE = { ...openEnded, [q.key]: e.target.value }
+                    setOpenEnded(newOE)
+                    saveDraft(scores, demographics, newOE, currentSection)
+                  }}
+                  placeholder="Share your thoughts here..."
+                />
+              </div>
+            ))}
+            <div className="survey-nav">
+              <button className="btn btn-outline" onClick={() => goToSection(7)}>Back</button>
+              <button className="btn btn-primary" onClick={() => goToSection(9)}>
+                Review &amp; Submit
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ════ SECTION 9: REVIEW ═════════════════════════════ */}
+        {currentSection === 9 && (
+          <div className="survey-card" key="review">
+            <div className="competency-header">
+              <h2>Review Your Responses</h2>
+              <p>Verify your answers before submitting. Click Back to make changes.</p>
+            </div>
+
+            {/* Color legend */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20, padding: '12px 16px',
+              background: '#f9fafb', borderRadius: 10, fontSize: '0.75rem', color: '#6b7280', alignItems: 'center' }}>
+              {LIKERT_SCALE.map(opt => {
+                const c = LIKERT_COLORS[opt.value]
+                return (
+                  <div key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: 3, background: c.selectedBg }} />
+                    <span>{opt.value} = {opt.label}</span>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Demographics summary */}
+            <div className="review-competency" style={{ background: '#F0F5FB' }}>
+              <div className="review-competency-name">About You</div>
+              <div style={{ fontSize: '0.9rem', color: '#374151' }}>
+                {DEMOGRAPHIC_FIELDS.map(f => demographics[f.key]).filter(Boolean).join(' • ')}
+              </div>
+            </div>
+
+            {/* Pillar summaries */}
+            {PILLARS.map((pillar, pi) => {
+              const questions = CORE_QUESTIONS.filter(q => q.pillar === pillar.key)
+              return (
+                <div key={pillar.key} className="review-competency">
+                  <div className="review-competency-name">{pillar.name}</div>
+                  <div className="review-scores">
+                    {questions.map(q => {
+                      const val = scores[q.key]
+                      const c = val ? LIKERT_COLORS[val] : null
+                      return (
+                        <span
+                          key={q.key}
+                          title={`${q.text}`}
+                          style={
+                            c
+                              ? { display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  width: 44, height: 44, borderRadius: 8, fontSize: '0.95rem', fontWeight: 700,
+                                  background: c.selectedBg, color: '#fff',
+                                  boxShadow: `0 2px 8px ${c.selectedBg}30` }
+                              : { display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  width: 44, height: 44, borderRadius: 8, fontSize: '0.95rem', fontWeight: 600,
+                                  background: '#f9fafb', color: '#d1d5db', border: '1.5px dashed #e5e7eb' }
+                          }
+                        >
+                          {val || '\u2014'}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Sentinels + Anchor summary */}
+            <div className="review-competency">
+              <div className="review-competency-name">Additional Questions</div>
+              <div className="review-scores">
+                {[...SENTINEL_QUESTIONS, ANCHOR_QUESTION].map(q => {
+                  const val = scores[q.key]
+                  const c = val ? LIKERT_COLORS[val] : null
+                  return (
+                    <span
+                      key={q.key}
+                      title={`${q.text}`}
+                      style={
+                        c
+                          ? { display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              width: 44, height: 44, borderRadius: 8, fontSize: '0.95rem', fontWeight: 700,
+                              background: c.selectedBg, color: '#fff',
+                              boxShadow: `0 2px 8px ${c.selectedBg}30` }
+                          : { display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              width: 44, height: 44, borderRadius: 8, fontSize: '0.95rem', fontWeight: 600,
+                              background: '#f9fafb', color: '#d1d5db', border: '1.5px dashed #e5e7eb' }
+                      }
+                    >
+                      {val || '\u2014'}
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Written feedback summary */}
+            {OPEN_ENDED_QUESTIONS.some(q => openEnded[q.key]) && (
+              <div className="review-competency" style={{ background: '#F0F5FB' }}>
+                <div className="review-competency-name">Your Perspective</div>
+                <div style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+                  {OPEN_ENDED_QUESTIONS.filter(q => openEnded[q.key]).length} of {OPEN_ENDED_QUESTIONS.length} responses provided
+                </div>
+              </div>
+            )}
+
+            {!allSectionsComplete() && (
+              <div className="alert alert-error mt-2">
+                Some required questions are unanswered. Please go back and complete all sections.
+              </div>
+            )}
+
+            <div className="survey-nav">
+              <button className="btn btn-outline" onClick={() => goToSection(8)}>Back</button>
+              <button
+                className="btn btn-camel"
+                disabled={!allSectionsComplete() || submitting}
+                onClick={handleSubmit}
+                style={{ padding: '14px 40px', fontSize: '0.9375rem' }}
+              >
+                {submitting ? 'Submitting...' : 'Submit Survey'}
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   )
 }
-
-export default Survey
