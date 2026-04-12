@@ -38,6 +38,7 @@ export default function Dashboard() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [toast, setToast] = useState('')
+  const [deleteRespondentId, setDeleteRespondentId] = useState(null)
 
   // Email Manager state
   const [emailSubject, setEmailSubject] = useState('')
@@ -144,6 +145,22 @@ export default function Dashboard() {
       await supabase.from('ohi_respondents').delete().eq('engagement_id', id)
       await supabase.from('ohi_engagements').delete().eq('id', id)
       navigate('/')
+    } catch (err) { setError(err.message) } finally { setActionLoading(false) }
+  }
+
+  const handleDeleteRespondent = async (respondentId) => {
+    try {
+      setActionLoading(true)
+      // Delete any related email recipients first
+      await supabase.from('ohi_project_email_recipients').delete().eq('respondent_id', respondentId)
+      // Delete any responses
+      await supabase.from('ohi_responses').delete().eq('respondent_id', respondentId)
+      // Delete the respondent
+      const { error } = await supabase.from('ohi_respondents').delete().eq('id', respondentId)
+      if (error) throw error
+      setDeleteRespondentId(null)
+      await fetchData()
+      flash('Respondent deleted')
     } catch (err) { setError(err.message) } finally { setActionLoading(false) }
   }
 
@@ -500,8 +517,8 @@ export default function Dashboard() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#131B55' }}>
-                      {['EMAIL / TOKEN', 'STATUS', 'STARTED', 'COMPLETED', 'DURATION'].map(h => (
-                        <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#fff', letterSpacing: 0.8 }}>{h}</th>
+                      {['EMAIL / TOKEN', 'STATUS', 'STARTED', 'COMPLETED', 'DURATION', ''].map(h => (
+                        <th key={h || '_actions'} style={{ padding: '12px 16px', textAlign: h ? 'left' : 'center', fontSize: 11, fontWeight: 700, color: '#fff', letterSpacing: 0.8, width: h ? undefined : 50 }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -521,6 +538,23 @@ export default function Dashboard() {
                         <td style={{ padding: '12px 16px', fontSize: 13, color: '#666' }}>{r.started_at ? `${fmtDate(r.started_at)} ${fmtTime(r.started_at)}` : '—'}</td>
                         <td style={{ padding: '12px 16px', fontSize: 13, color: '#666' }}>{r.completed_at ? `${fmtDate(r.completed_at)} ${fmtTime(r.completed_at)}` : '—'}</td>
                         <td style={{ padding: '12px 16px', fontSize: 13, color: '#666' }}>{r.duration_seconds ? `${Math.round(r.duration_seconds / 60)} min` : '—'}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                          {deleteRespondentId === r.id ? (
+                            <span style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center' }}>
+                              <button style={{ background: '#DC2626', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                onClick={() => handleDeleteRespondent(r.id)} disabled={actionLoading}>Yes</button>
+                              <button style={{ background: '#E2E2EA', color: '#333', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                onClick={() => setDeleteRespondentId(null)}>No</button>
+                            </span>
+                          ) : (
+                            <button title="Delete respondent" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, color: '#999', fontSize: 15 }}
+                              onMouseEnter={e => e.currentTarget.style.color = '#DC2626'}
+                              onMouseLeave={e => e.currentTarget.style.color = '#999'}
+                              onClick={() => setDeleteRespondentId(r.id)}>
+                              🗑
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
