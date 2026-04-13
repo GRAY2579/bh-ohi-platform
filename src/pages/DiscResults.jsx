@@ -323,6 +323,45 @@ async function generateDiscPDF(respondent) {
     doc.text(quoteText, pageWidth - 5, pageHeight / 2, { align: 'right', maxWidth: 10 })
   }
 
+  // ── Helper: Draw a left-border callout box (matches master PDF pattern) ──
+  function drawCalloutBox(x, yStart, width, title, bodyText, borderColor, bgColor) {
+    bgColor = bgColor || [248, 248, 252]
+    const bodyLines = doc.splitTextToSize(bodyText, width - 12)
+    const boxH = 8 + bodyLines.length * 3.8
+    // Background fill
+    doc.setFillColor(...bgColor)
+    doc.rect(x, yStart, width, boxH, 'F')
+    // Left border strip
+    doc.setFillColor(...borderColor)
+    doc.rect(x, yStart, 1.5, boxH, 'F')
+    // Title
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.setTextColor(...borderColor)
+    doc.text(title, x + 5, yStart + 5)
+    // Body
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(50, 50, 50)
+    bodyLines.forEach((line, i) => {
+      doc.text(line, x + 5, yStart + 9.5 + i * 3.8)
+    })
+    return boxH
+  }
+
+  // ── Helper: Draw page title with gold underline ──
+  function drawPageTitle(title, yStart) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(24)
+    doc.setTextColor(...COLORS.NAVY)
+    doc.text(title, margin, yStart)
+    const titleY = yStart + 3
+    doc.setDrawColor(...COLORS.GOLD)
+    doc.setLineWidth(0.8)
+    doc.line(margin, titleY, pageWidth - margin, titleY)
+    return titleY + 8
+  }
+
   const comboProfile = COMBO_PROFILES && COMBO_PROFILES[`${respondent.primary_style}-${respondent.secondary_style}`]
     ? COMBO_PROFILES[`${respondent.primary_style}-${respondent.secondary_style}`]
     : `${respondent.primary_style}-${respondent.secondary_style}`
@@ -405,15 +444,7 @@ async function generateDiscPDF(respondent) {
 
   let y = margin
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('Understanding DISC', margin, y)
-  y += 2
-  doc.setDrawColor(...COLORS.GOLD)
-  doc.setLineWidth(0.5)
-  doc.line(margin, y, margin + 80, y)
-  y += 8
+  y = drawPageTitle('Understanding DISC', y)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
@@ -475,26 +506,22 @@ async function generateDiscPDF(respondent) {
   doc.text('TASK', quadX - quadSize - 2, quadY + quadSize, { align: 'center' })
   doc.text('PEOPLE', quadX + quadSize + 2, quadY + quadSize, { align: 'center' })
 
-  y = quadY + quadSize * 2 + 8
+  y = quadY + quadSize * 2 + 6
 
-  doc.setFillColor(230, 240, 250)
-  doc.setDrawColor(146, 192, 233)
-  doc.setLineWidth(0.5)
-  doc.rect(margin, y, contentWidth, 18, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('What This Report Measures', margin + 2, y + 3)
+  // "No good or bad" paragraph (matches master)
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
+  doc.setFontSize(10)
   doc.setTextColor(50, 50, 50)
-  const whatMeasures = doc.splitTextToSize(
+  const noGoodBad = doc.splitTextToSize('There is no good or bad DISC style. Each style has unique strengths and potential blind spots. Each contributes value in different situations. A great team has diversity of styles. Your style is not fixed — you can adapt to different situations, though you will always have a natural preference that feels most comfortable and authentic.', contentWidth - 2)
+  noGoodBad.forEach(line => { doc.text(line, margin + 1, y); y += 4 })
+  y += 4
+
+  // Callout box: What This Report Measures
+  const whatMeasuresH = drawCalloutBox(margin, y, contentWidth,
+    'What This Report Measures',
     'Your BH-DISC assessment measures your natural behavior in three distinct contexts: your public perception (how others see you in professional settings), your private self (how you naturally behave when there is no external pressure to adapt), and your perceived self (how you see yourself). The differences between these three measurements reveal important information about your behavioral flexibility and the degree to which your self-image matches how others experience you.',
-    contentWidth - 4
-  )
-  whatMeasures.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 6 + i * 3)
-  })
+    COLORS.NAVY)
+  y += whatMeasuresH
 
   addFooter(pageNum++)
 
@@ -503,14 +530,7 @@ async function generateDiscPDF(respondent) {
   doc.addPage()
   y = margin
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('The Four DISC Styles', margin, y)
-  y += 2
-  doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
-  y += 8
+  y = drawPageTitle('The Four DISC Styles', y)
 
   const tableColWidth = contentWidth / 5
   const tableRowHeight = 5
@@ -566,28 +586,24 @@ async function generateDiscPDF(respondent) {
   })
 
   y += 3
-  doc.setFillColor(230, 240, 250)
-  doc.setDrawColor(146, 192, 233)
-  doc.rect(margin, y, contentWidth, 10, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('How to Use This Table', margin + 2, y + 2)
+  // "Remember: no style is better" paragraph (matches master)
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
+  doc.setFontSize(10)
   doc.setTextColor(50, 50, 50)
-  doc.text('This table is your quick-reference guide. When you encounter colleagues whose behavior puzzles you, return to this page.', margin + 2, y + 5)
-  y += 12
+  const rememberText = doc.splitTextToSize('Remember: no style is better or worse than another. Each brings essential capabilities that teams and organizations need. The most effective individuals and teams leverage the strengths of every style while managing the blind spots. Your goal is not to change your style but to understand it, leverage it, and develop the flexibility to adapt when the situation requires it.', contentWidth - 2)
+  rememberText.forEach(line => { doc.text(line, margin + 1, y); y += 4 })
+  y += 3
 
-  doc.setFillColor(200, 240, 200)
-  doc.rect(margin, y, contentWidth, 8, 'F')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 100, 50)
-  doc.text('Reflection', margin + 2, y + 2)
-  doc.setFont('helvetica', 'italic')
-  doc.setFontSize(7)
-  doc.text('Which of these four styles feels most familiar to you? Which one feels most foreign?', margin + 2, y + 5)
+  y += drawCalloutBox(margin, y, contentWidth,
+    'How to Use This Table',
+    'This table is your quick-reference guide throughout the report. When you encounter a colleague, client, or team member whose behavior puzzles or frustrates you, return to this page. Find their likely style in the columns above and compare it to yours. Pay special attention to the rows for Communication, Motivated By, and Fears — these three dimensions explain the vast majority of workplace friction. Understanding what drives someone else\'s behavior makes it far easier to adapt your own approach for better outcomes.',
+    COLORS.NAVY)
+  y += 3
+
+  y += drawCalloutBox(margin, y, contentWidth,
+    'Reflection',
+    'As you review the table above, consider: which dimensions surprise you most about your style? Which blind spot feels most accurate? Think about someone you work closely with — can you identify their likely DISC style? What differences between your styles might explain past friction or miscommunication?',
+    COLORS.S)
 
   addSidebarQuote(0)
   addFooter(pageNum++)
@@ -1322,26 +1338,32 @@ async function generateDiscPDF(respondent) {
   doc.addPage()
   y = margin
 
+  // Page title + gold line (24pt)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Communication Keywords', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
+  // Brief intro paragraph (10pt, 4.5mm line spacing)
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const keywordIntro = 'These keywords describe your natural communication style. Each captures a dimension of how you show up in conversations, meetings, and relationships.'
   const keywordLines = doc.splitTextToSize(keywordIntro, contentWidth)
+  doc.setLineHeightFactor(1.35)
   keywordLines.forEach((line) => {
     doc.text(line, margin, y)
-    y += 3.5
+    y += 4.5
   })
+  doc.setLineHeightFactor(1.15)
   y += 4
 
+  // 2x4 grid of keyword cards
   const keywords = [
     { title: 'DECISIVE', desc: 'Making firm decisions quickly; having the ability to decide and commit without hesitation.' },
     { title: 'DIRECT', desc: 'Straightforward and frank; not evasive, ambiguous, or overly diplomatic in communication.' },
@@ -1353,93 +1375,98 @@ async function generateDiscPDF(respondent) {
     { title: 'COMMANDING', desc: 'Exercising natural authority; inspiring obedience and respect through presence and confidence.' },
   ]
 
-  const keywordColWidth = contentWidth / 2
+  const keywordColWidthP11 = (contentWidth - 1) / 2
   keywords.forEach((kw, idx) => {
     const col = idx % 2
     const row = Math.floor(idx / 2)
-    const xPos = margin + col * (keywordColWidth + 1)
-    const yPos = y + row * 22
+    const xPos = margin + col * (keywordColWidthP11 + 1)
+    const yPos = y + row * 20
 
-    if (yPos > pageHeight - margin - 20) {
+    if (yPos + 20 > pageHeight - margin - 28) {
       doc.addPage()
       y = margin
     }
 
+    // Navy header with white bold keyword
     doc.setFillColor(...COLORS.NAVY)
-    doc.rect(xPos, yPos, keywordColWidth - 1, 5, 'F')
+    doc.rect(xPos, yPos, keywordColWidthP11, 5, 'F')
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
+    doc.setFontSize(10)
     doc.setTextColor(255, 255, 255)
-    doc.text(kw.title, xPos + 1, yPos + 3)
+    doc.text(kw.title, xPos + 1.5, yPos + 3.5)
 
-    doc.setFillColor(250, 250, 250)
-    doc.rect(xPos, yPos + 5, keywordColWidth - 1, 15, 'F')
+    // Light gray body with description
+    doc.setFillColor(248, 248, 252)
+    doc.rect(xPos, yPos + 5, keywordColWidthP11, 14, 'F')
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7)
-    doc.setTextColor(50, 50, 50)
-    const descLines = doc.splitTextToSize(kw.desc, keywordColWidth - 3)
+    doc.setFontSize(9)
+    doc.setTextColor(80, 80, 80)
+    const descLines = doc.splitTextToSize(kw.desc, keywordColWidthP11 - 2)
     descLines.forEach((line, i) => {
-      doc.text(line, xPos + 1, yPos + 7.5 + i * 2.5)
+      doc.text(line, xPos + 1.5, yPos + 7.5 + i * 2.8)
     })
   })
 
-  y += 90
+  y += 88
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('Putting It Together', margin, y)
-  y += 4
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 50)
+  // Navy callout "Putting It Together"
   const puttingText = 'These eight keywords paint a picture of your distinctive communication style: someone who is decisive, direct, driven, forceful, results-oriented, fast-paced, competitive, and commanding. Together, these create a communication presence that is powerful and recognizable.'
-  const puttingLines = doc.splitTextToSize(puttingText, contentWidth - 2)
-  puttingLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 3
-  })
+  const puttingHeight = drawCalloutBox(margin, y, contentWidth, 'Putting It Together', puttingText, COLORS.NAVY, [248, 248, 252])
+  y += puttingHeight + 4
 
+  // Green callout "Reflection"
+  const reflectionText11 = 'When others interact with you, what keywords would they use to describe how you communicate? Ask someone you trust.'
+  drawCalloutBox(margin, y, contentWidth, 'Reflection', reflectionText11, COLORS.S, [248, 248, 252])
+
+  addSidebarQuote(5)
   addFooter(pageNum++)
 
   // PAGE 12: How You Naturally Communicate
   doc.addPage()
   y = margin
 
+  // Page title + gold line
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('How You Naturally Communicate', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
+  // "Your Communication Style" sub-header on left
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
+  doc.setFontSize(13)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Your Communication Style', margin, y)
   y += 4
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const yourCommText = 'Your communication style is direct, decisive, and results-focused. You do not waste words. You say what you think and expect others to do the same. You lead with conclusions and support them with facts when necessary. You prefer brief, focused conversations that move toward a decision or action. You become frustrated with small talk, lengthy elaboration, or information that does not advance the objective.'
-  const yourCommLines = doc.splitTextToSize(yourCommText, contentWidth - 2)
+  const yourCommLines = doc.splitTextToSize(yourCommText, contentWidth * 0.52)
+  doc.setLineHeightFactor(1.35)
   yourCommLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
-  y += 3
+  doc.setLineHeightFactor(1.15)
+  y += 2
 
-  // Communication Snapshot box
+  // Communication Snapshot table on RIGHT side
   const commSnap = COMM_SNAPSHOT && COMM_SNAPSHOT[respondent.primary_style] ? COMM_SNAPSHOT[respondent.primary_style] : {}
-  const commSnapColWidth = contentWidth / 2
+  const commSnapColWidth = contentWidth * 0.45
+  const commSnapX = margin + contentWidth * 0.52
+  const snapStartY = margin + 11
+  
   doc.setFillColor(...COLORS[respondent.primary_style])
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
+  doc.setFontSize(10)
   doc.setTextColor(255, 255, 255)
-  doc.rect(margin + commSnapColWidth, y - 12, commSnapColWidth, 4, 'F')
-  doc.text('Communication Snapshot', margin + commSnapColWidth + 1, y - 9)
+  doc.rect(commSnapX, snapStartY, commSnapColWidth, 5, 'F')
+  doc.text('Communication Snapshot', commSnapX + 1.5, snapStartY + 3.5)
 
   doc.setFillColor(250, 250, 250)
   const snapRows = [
@@ -1451,179 +1478,159 @@ async function generateDiscPDF(respondent) {
   ]
 
   snapRows.forEach((row, idx) => {
-    doc.rect(margin + commSnapColWidth, y - 8 + idx * 4, commSnapColWidth, 4, 'F')
+    doc.rect(commSnapX, snapStartY + 5 + idx * 5, commSnapColWidth, 5, 'F')
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7.5)
+    doc.setFontSize(9)
     doc.setTextColor(...COLORS.NAVY)
-    doc.text(row.label, margin + commSnapColWidth + 1, y - 6 + idx * 4)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7.5)
-    doc.setTextColor(50, 50, 50)
-    const valueLines = doc.splitTextToSize(row.value, commSnapColWidth - 22)
-    doc.text(valueLines[0], margin + commSnapColWidth + 20, y - 6 + idx * 4)
-  })
-
-  y += 8
-
-  // Energizes & Drains section
-  const energizesDrains = ENERGIZES_DRAINS && ENERGIZES_DRAINS[respondent.primary_style] ? ENERGIZES_DRAINS[respondent.primary_style] : {}
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('What Energizes & Drains You', margin, y)
-  y += 6
-
-  const energizeDrainColWidth = contentWidth / 2
-  doc.setFillColor(...COLORS[respondent.primary_style])
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.setTextColor(255, 255, 255)
-  doc.rect(margin, y, energizeDrainColWidth, 4, 'F')
-  doc.text('ENERGIZES YOU', margin + 2, y + 2)
-  doc.rect(margin + energizeDrainColWidth, y, energizeDrainColWidth, 4, 'F')
-  doc.text('DRAINS YOU', margin + energizeDrainColWidth + 2, y + 2)
-  y += 4
-
-  const maxEnergizeItems = Math.max((energizesDrains.energizes || []).length, (energizesDrains.drains || []).length)
-  for (let i = 0; i < maxEnergizeItems; i++) {
-    doc.setFillColor(i % 2 === 0 ? 255 : 249, i % 2 === 0 ? 255 : 249, i % 2 === 0 ? 255 : 249)
-    doc.rect(margin, y, energizeDrainColWidth, 4, 'F')
-    doc.rect(margin + energizeDrainColWidth, y, energizeDrainColWidth, 4, 'F')
+    doc.text(row.label + ':', commSnapX + 1.5, snapStartY + 8 + idx * 5)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
-    doc.setTextColor(50, 50, 50)
-    if (energizesDrains.energizes && i < energizesDrains.energizes.length) {
-      doc.text(energizesDrains.energizes[i], margin + 2, y + 2.5)
-    }
-    if (energizesDrains.drains && i < energizesDrains.drains.length) {
-      doc.text(energizesDrains.drains[i], margin + energizeDrainColWidth + 2, y + 2.5)
-    }
-    y += 4
-  }
+    doc.setTextColor(80, 80, 80)
+    const valueLines = doc.splitTextToSize(row.value, commSnapColWidth - 12)
+    doc.text(valueLines[0], commSnapX + 20, snapStartY + 8 + idx * 5)
+  })
 
-  y += 3
+  y = snapStartY + 35
 
+  // "How You Show Up in Conversations" section
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
+  doc.setFontSize(13)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('How You Show Up in Conversations', margin, y)
   y += 4
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const showUpText = profile?.natural_communication || 'You naturally communicate with authority and confidence. Your words carry weight because you sound certain of what you are saying. You use language that is forceful and commanding.'
-  const showUpLines = doc.splitTextToSize(showUpText, contentWidth - 2)
+  const showUpLines = doc.splitTextToSize(showUpText, contentWidth)
+  doc.setLineHeightFactor(1.35)
   showUpLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
+  doc.setLineHeightFactor(1.15)
+  y += 4
+
+  // Navy callout "Communication Strength"
+  const commStrengthText = 'Your greatest communication strength is your ability to cut through noise and get to the point. People know where they stand with you.'
+  const commStrengthHeight = drawCalloutBox(margin, y, contentWidth, 'Communication Strength', commStrengthText, COLORS.NAVY, [248, 248, 252])
+  y += commStrengthHeight + 4
+
+  // Navy callout "What Others Need to Know About You"
+  const othersNeedText = 'Slow down enough to make sure others understand the "why" behind your decisions. Your speed can create the impression that you do not value their input, even when you do.'
+  drawCalloutBox(margin, y, contentWidth, 'What Others Need to Know About You', othersNeedText, COLORS.NAVY, [248, 248, 252])
 
   addSidebarQuote(6)
   addFooter(pageNum++)
 
-  // PAGE 13-14: Compatibility (2 pages)
+  // PAGE 13-14: Compatibility (2 pages) - will be refactored into single page
   doc.addPage()
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Compatibility: Working with Other Styles', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const compatIntro = profile ? `As a ${profile.name} individual, you have natural affinities with some styles and potential friction with others. Understanding these dynamics is one of the most practical applications of the DISC model — it helps you anticipate misunderstandings before they happen and adapt your approach to build stronger, more productive relationships.` : 'As a leader, you have natural affinities with some styles and potential friction with others. Understanding these dynamics is one of the most practical applications of the DISC model — it helps you anticipate misunderstandings before they happen and adapt your approach to build stronger, more productive relationships.'
-  const compatLines = doc.splitTextToSize(compatIntro, contentWidth - 2)
+  const compatLines = doc.splitTextToSize(compatIntro, contentWidth)
+  doc.setLineHeightFactor(1.35)
   compatLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
+  doc.setLineHeightFactor(1.15)
   y += 4
 
-  // Influencing (I) Section
+  // Influencing (I) in orange
   const styleInteractions = STYLE_INTERACTIONS && STYLE_INTERACTIONS[respondent.primary_style] ? STYLE_INTERACTIONS[respondent.primary_style] : {}
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
+  doc.setFontSize(13)
   doc.setTextColor(...COLORS.I)
   doc.text('Influencing (I)', margin, y)
   y += 4
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const iText = styleInteractions.with_i || 'You and the Influencing personality share boldness and a preference for fast action. You focus on results; they focus on people.'
-  const iLines = doc.splitTextToSize(iText, contentWidth - 2)
+  const iLines = doc.splitTextToSize(iText, contentWidth)
+  doc.setLineHeightFactor(1.35)
   iLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
-  y += 2
+  doc.setLineHeightFactor(1.15)
+  y += 3
 
-  // What You Share / Where You Clash / How to Unlock table
+  // 3-column table: What You Share | Where You Clash | How to Unlock It
   const compatColWidth = contentWidth / 3
   doc.setFillColor(...COLORS.NAVY)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
+  doc.setFontSize(9)
   doc.setTextColor(255, 255, 255)
-  doc.rect(margin, y, compatColWidth, 4, 'F')
-  doc.text('What You Share', margin + 1, y + 2.5)
-  doc.rect(margin + compatColWidth, y, compatColWidth, 4, 'F')
-  doc.text('Where You Clash', margin + compatColWidth + 1, y + 2.5)
-  doc.rect(margin + compatColWidth * 2, y, compatColWidth, 4, 'F')
-  doc.text('How to Unlock It', margin + compatColWidth * 2 + 1, y + 2.5)
-  y += 4
+  doc.rect(margin, y, compatColWidth, 5, 'F')
+  doc.text('What You Share', margin + 1.5, y + 3.5)
+  doc.rect(margin + compatColWidth, y, compatColWidth, 5, 'F')
+  doc.text('Where You Clash', margin + compatColWidth + 1.5, y + 3.5)
+  doc.rect(margin + compatColWidth * 2, y, compatColWidth, 5, 'F')
+  doc.text('How to Unlock It', margin + compatColWidth * 2 + 1.5, y + 3.5)
+  y += 5
 
-  doc.setFillColor(250, 250, 250)
-  doc.rect(margin, y, contentWidth, 10, 'F')
+  doc.setFillColor(248, 248, 252)
+  doc.rect(margin, y, contentWidth, 12, 'F')
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
-  doc.setTextColor(50, 50, 50)
-  doc.text('Fast pace, bold action, big-picture thinking', margin + 1, y + 2)
-  doc.text('You prioritize results; they prioritize relationships and recognition', margin + compatColWidth + 1, y + 2)
-  doc.text('Let them bring people along — your goals land faster with their buy-in', margin + compatColWidth * 2 + 1, y + 2)
-  y += 12
+  doc.setFontSize(9)
+  doc.setTextColor(80, 80, 80)
+  doc.text('Fast pace, bold action, big-picture thinking', margin + 1.5, y + 3)
+  doc.text('You prioritize results; they prioritize relationships and recognition', margin + compatColWidth + 1.5, y + 3)
+  doc.text('Let them bring people along — your goals land faster with their buy-in', margin + compatColWidth * 2 + 1.5, y + 3)
+  y += 14
 
-  // Steady (S) Section
+  // Navy callout "In Practice"
+  const iPracticeText = 'Share your big-picture goals and outcomes. Give them room to engage people and build support. You will move faster together.'
+  const iInPracticeHeight = drawCalloutBox(margin, y, contentWidth, 'In Practice', iPracticeText, COLORS.NAVY, [248, 248, 252])
+  y += iInPracticeHeight + 4
+
+  // Steady (S) in green
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
+  doc.setFontSize(13)
   doc.setTextColor(...COLORS.S)
   doc.text('Steady (S)', margin, y)
   y += 4
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const sText = styleInteractions.with_s || 'You and the Steady personality are natural opposites in many ways. You move fast; they move deliberately. You embrace change; they resist it.'
-  const sLines = doc.splitTextToSize(sText, contentWidth - 2)
+  const sLines = doc.splitTextToSize(sText, contentWidth)
+  doc.setLineHeightFactor(1.35)
   sLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
-  y += 2
+  doc.setLineHeightFactor(1.15)
+  y += 3
 
-  doc.setFillColor(250, 250, 250)
-  doc.rect(margin, y, contentWidth, 10, 'F')
+  doc.setFillColor(248, 248, 252)
+  doc.rect(margin, y, contentWidth, 12, 'F')
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
-  doc.setTextColor(50, 50, 50)
-  doc.text('Commitment to getting things done right', margin + 1, y + 2)
-  doc.text('You push for speed; they need time to process and adjust', margin + compatColWidth + 1, y + 2)
-  doc.text('Invest in the relationship first — their loyalty becomes your greatest asset', margin + compatColWidth * 2 + 1, y + 2)
-  y += 12
+  doc.setFontSize(9)
+  doc.setTextColor(80, 80, 80)
+  doc.text('Commitment to getting things done right', margin + 1.5, y + 3)
+  doc.text('You push for speed; they need time to process and adjust', margin + compatColWidth + 1.5, y + 3)
+  doc.text('Invest in the relationship first — their loyalty becomes your greatest asset', margin + compatColWidth * 2 + 1.5, y + 3)
+  y += 14
 
-  doc.setFillColor(200, 240, 200)
-  doc.rect(margin, y, contentWidth, 6, 'F')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 100, 50)
-  doc.text('The Compatibility Principle', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
-  doc.setTextColor(50, 50, 50)
-  doc.text('The styles that frustrate you most — Steady and Compliant — are often the ones you need most. They bring patience, thoroughness, and relationship investment.', margin + 2, y + 4.5)
+  // Navy callout "In Practice"
+  const sPracticeText = 'Give them a timeline. Explain your rationale. Ask for their input on implementation. Their caution will improve your plans.'
+  drawCalloutBox(margin, y, contentWidth, 'In Practice', sPracticeText, COLORS.NAVY, [248, 248, 252])
 
   addFooter(pageNum++)
 
@@ -1632,78 +1639,86 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Compatibility (continued)', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
-  // Compliant (C) Section
+  // Compliant (C) in blue
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
+  doc.setFontSize(13)
   doc.setTextColor(...COLORS.C)
   doc.text('Compliant (C)', margin, y)
   y += 4
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const cText = styleInteractions.with_c || 'You and the Compliant personality can frustrate each other profoundly. You think they are too slow and too focused on details; they think you are reckless and too dismissive of important information.'
-  const cLines = doc.splitTextToSize(cText, contentWidth - 2)
+  const cLines = doc.splitTextToSize(cText, contentWidth)
+  doc.setLineHeightFactor(1.35)
   cLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
-  y += 2
+  doc.setLineHeightFactor(1.15)
+  y += 3
 
-  doc.setFillColor(250, 250, 250)
-  doc.rect(margin, y, contentWidth, 10, 'F')
+  doc.setFillColor(248, 248, 252)
+  doc.rect(margin, y, contentWidth, 12, 'F')
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
-  doc.setTextColor(50, 50, 50)
-  doc.text('Task orientation and high standards', margin + 1, y + 2)
-  doc.text('You want decisions now; they want more data before committing', margin + compatColWidth + 1, y + 2)
-  doc.text('Give them a deadline with the question — their analysis sharpens your decisions', margin + compatColWidth * 2 + 1, y + 2)
-  y += 12
+  doc.setFontSize(9)
+  doc.setTextColor(80, 80, 80)
+  doc.text('Task orientation and high standards', margin + 1.5, y + 3)
+  doc.text('You want decisions now; they want more data before committing', margin + compatColWidth + 1.5, y + 3)
+  doc.text('Give them a deadline with the question — their analysis sharpens your decisions', margin + compatColWidth * 2 + 1.5, y + 3)
+  y += 14
 
-  // Working with Another Dominant (D)
+  // Navy callout "In Practice"
+  const cPracticeText = 'Ask what data they need and by when. Set a hard decision deadline. Their thoroughness will strengthen your choices.'
+  const cInPracticeHeight = drawCalloutBox(margin, y, contentWidth, 'In Practice', cPracticeText, COLORS.NAVY, [248, 248, 252])
+  y += cInPracticeHeight + 4
+
+  // Working with Another Dominant (D) in red
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
+  doc.setFontSize(13)
   doc.setTextColor(...COLORS.D)
   doc.text('Working with Another Dominant (D)', margin, y)
   y += 4
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const dText = 'When two Dominant individuals work together, the results can be extraordinary or explosive — often both. You share a drive for results, a bias toward action, and an unwillingness to accept mediocrity. The risk is that neither of you wants to follow or defer, which can create power struggles. Establish clear lanes of responsibility. Compete on results, not on authority. Respect each other\'s autonomy.'
-  const dLines = doc.splitTextToSize(dText, contentWidth - 2)
+  const dLines = doc.splitTextToSize(dText, contentWidth)
+  doc.setLineHeightFactor(1.35)
   dLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
-  y += 2
+  doc.setLineHeightFactor(1.15)
+  y += 3
 
-  doc.setFillColor(250, 250, 250)
-  doc.rect(margin, y, contentWidth, 10, 'F')
+  doc.setFillColor(248, 248, 252)
+  doc.rect(margin, y, contentWidth, 12, 'F')
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
-  doc.setTextColor(50, 50, 50)
-  doc.text('Drive, decisiveness, refusal to accept mediocrity', margin + 1, y + 2)
-  doc.text('Neither wants to follow — power struggles are the default', margin + compatColWidth + 1, y + 2)
-  doc.text('Divide lanes clearly and compete on results, not authority', margin + compatColWidth * 2 + 1, y + 2)
-  y += 12
+  doc.setFontSize(9)
+  doc.setTextColor(80, 80, 80)
+  doc.text('Drive, decisiveness, refusal to accept mediocrity', margin + 1.5, y + 3)
+  doc.text('Neither wants to follow — power struggles are the default', margin + compatColWidth + 1.5, y + 3)
+  doc.text('Divide lanes clearly and compete on results, not authority', margin + compatColWidth * 2 + 1.5, y + 3)
+  y += 14
 
-  doc.setFillColor(240, 240, 200)
-  doc.rect(margin, y, contentWidth, 6, 'F')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.setTextColor(139, 90, 20)
-  doc.text('Reflection', margin + 2, y + 2)
-  doc.setFont('helvetica', 'italic')
-  doc.setFontSize(7)
-  doc.setTextColor(50, 50, 50)
-  doc.text('Think about your most productive working relationship. What DISC style is that person? Now think about your most challenging one. What pattern do you notice?', margin + 2, y + 4.5)
+  // Navy callout "In Practice" for D-D
+  const dPracticeText = 'Define clear areas of authority. Make competition about external outcomes, not internal control. Respect each other\'s decision-making within your lanes.'
+  drawCalloutBox(margin, y, contentWidth, 'In Practice', dPracticeText, COLORS.NAVY, [248, 248, 252])
+
+  // Green callout "Reflection"
+  y += 12
+  const reflectionText14 = 'Think about your most productive working relationship. What DISC style is that person? Now think about your most challenging one. What pattern do you notice?'
+  drawCalloutBox(margin, y, contentWidth, 'Reflection', reflectionText14, COLORS.S, [248, 248, 252])
 
   addSidebarQuote(7)
   addFooter(pageNum++)
@@ -1713,61 +1728,63 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Communication Worksheet', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const worksheetIntro = 'Use this worksheet to reflect on your communication patterns and plan specific adaptations for the people in your life. Consider your key relationships at work and at home.'
-  const worksheetLines = doc.splitTextToSize(worksheetIntro, contentWidth - 2)
+  const worksheetLines = doc.splitTextToSize(worksheetIntro, contentWidth)
+  doc.setLineHeightFactor(1.35)
   worksheetLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
+  doc.setLineHeightFactor(1.15)
   y += 6
 
-  // Worksheet table
+  // Worksheet table: DISC Style | Changes I Want to Make
   const worksheetColWidth = contentWidth / 2
   doc.setFillColor(...COLORS.NAVY)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
+  doc.setFontSize(10)
   doc.setTextColor(255, 255, 255)
   doc.rect(margin, y, worksheetColWidth, 5, 'F')
-  doc.text('DISC Style', margin + 1, y + 3)
+  doc.text('DISC Style', margin + 1.5, y + 3.5)
   doc.rect(margin + worksheetColWidth, y, worksheetColWidth, 5, 'F')
-  doc.text('Changes I Want to Make', margin + worksheetColWidth + 1, y + 3)
+  doc.text('Changes I Want to Make', margin + worksheetColWidth + 1.5, y + 3.5)
   y += 5
 
   const styles = ['D – Dominant', 'I – Influencing', 'S – Steady', 'C – Compliant']
   styles.forEach((style) => {
-    doc.setFillColor(250, 250, 250)
+    doc.setFillColor(248, 248, 252)
     doc.rect(margin, y, worksheetColWidth, 20, 'F')
     doc.rect(margin + worksheetColWidth, y, worksheetColWidth, 20, 'F')
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    doc.setTextColor(50, 50, 50)
-    doc.text(style, margin + 1, y + 2)
-    // Blank space for writing
+    doc.setFontSize(9)
+    doc.setTextColor(80, 80, 80)
+    doc.text(style, margin + 1.5, y + 2)
     y += 22
   })
 
   y += 4
 
-  // Reflection questions
+  // Reflection questions table
   doc.setFillColor(...COLORS.NAVY)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
+  doc.setFontSize(10)
   doc.setTextColor(255, 255, 255)
   doc.rect(margin, y, worksheetColWidth, 5, 'F')
-  doc.text('Reflection Question', margin + 1, y + 3)
+  doc.text('Reflection Question', margin + 1.5, y + 3.5)
   doc.rect(margin + worksheetColWidth, y, worksheetColWidth, 5, 'F')
-  doc.text('Your Notes', margin + worksheetColWidth + 1, y + 3)
+  doc.text('Your Notes', margin + worksheetColWidth + 1.5, y + 3.5)
   y += 5
 
   const questions = [
@@ -1778,19 +1795,20 @@ async function generateDiscPDF(respondent) {
   ]
 
   questions.forEach((q) => {
-    doc.setFillColor(250, 250, 250)
+    doc.setFillColor(248, 248, 252)
     doc.rect(margin, y, worksheetColWidth, 18, 'F')
     doc.rect(margin + worksheetColWidth, y, worksheetColWidth, 18, 'F')
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7.5)
-    doc.setTextColor(50, 50, 50)
-    const qLines = doc.splitTextToSize(q, worksheetColWidth - 3)
+    doc.setFontSize(8)
+    doc.setTextColor(80, 80, 80)
+    const qLines = doc.splitTextToSize(q, worksheetColWidth - 2)
     qLines.forEach((line, i) => {
-      doc.text(line, margin + 1, y + 2 + i * 3)
+      doc.text(line, margin + 1.5, y + 2 + i * 3)
     })
     y += 20
   })
 
+  addSidebarQuote(8)
   addFooter(pageNum++)
 
   // PAGE 16: Your Strengths in Your Style
@@ -1798,32 +1816,36 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Your Strengths in Your Style', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
+  // "Know Yourself" section
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
+  doc.setFontSize(13)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Know Yourself', margin, y)
   y += 4
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const knowYourselfText = PROFILES[respondent.primary_style].know_yourself
-  const knowYourselfLines = doc.splitTextToSize(knowYourselfText, contentWidth - 2)
+  const knowYourselfLines = doc.splitTextToSize(knowYourselfText, contentWidth)
+  doc.setLineHeightFactor(1.35)
   knowYourselfLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
+  doc.setLineHeightFactor(1.15)
   y += 6
 
-  // 2x2 grid of strength cards
-  const strengthCardWidth = (contentWidth - 2) / 2
+  // 2x2 grid of strength cards with gold header
+  const strengthCardWidth = (contentWidth - 1) / 2
   const strengthCards = STRENGTH_CARDS[respondent.primary_style].map(([title, desc]) => ({
     title,
     desc,
@@ -1835,62 +1857,53 @@ async function generateDiscPDF(respondent) {
     const xPos = margin + col * (strengthCardWidth + 1)
     const yPos = y + row * 20
 
+    // Gold header with white bold text
     doc.setFillColor(...COLORS.GOLD)
-    doc.setDrawColor(...COLORS.CAMEL)
-    doc.setLineWidth(1.5)
-    doc.rect(xPos, yPos, strengthCardWidth, 4, 'FD')
+    doc.rect(xPos, yPos, strengthCardWidth, 5, 'F')
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
+    doc.setFontSize(10)
     doc.setTextColor(255, 255, 255)
-    doc.text(card.title, xPos + 1, yPos + 2.5)
+    doc.text(card.title, xPos + 1.5, yPos + 3.5)
 
-    doc.setFillColor(250, 250, 250)
-    doc.setLineWidth(0.5)
-    doc.setDrawColor(200, 200, 200)
-    doc.rect(xPos, yPos + 4, strengthCardWidth, 14, 'FD')
+    // Light gray body
+    doc.setFillColor(248, 248, 252)
+    doc.rect(xPos, yPos + 5, strengthCardWidth, 14, 'F')
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7.5)
-    doc.setTextColor(50, 50, 50)
+    doc.setFontSize(9)
+    doc.setTextColor(80, 80, 80)
     const cardLines = doc.splitTextToSize(card.desc, strengthCardWidth - 2)
     cardLines.forEach((line, i) => {
-      doc.text(line, xPos + 1, yPos + 6 + i * 3)
+      doc.text(line, xPos + 1.5, yPos + 7.5 + i * 2.8)
     })
   })
 
   y += 42
 
+  // "Grow Yourself" section
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
+  doc.setFontSize(13)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Grow Yourself', margin, y)
   y += 4
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const growYourselfText16 = PROFILES[respondent.primary_style].grow_yourself
-  const growYourselfLines16 = doc.splitTextToSize(growYourselfText16, contentWidth - 2)
+  const growYourselfLines16 = doc.splitTextToSize(growYourselfText16, contentWidth)
+  doc.setLineHeightFactor(1.35)
   growYourselfLines16.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
+  doc.setLineHeightFactor(1.15)
 
-  // Value to Your Organization callout
-  y += 4
-  doc.setFillColor(210, 240, 250)
-  doc.rect(margin, y, contentWidth, 12, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('Value to Your Organization', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 50)
+  y += 6
+
+  // Blue callout "Value to Your Organization"
   const valueText16 = PROFILES[respondent.primary_style].value_to_team
-  const valueLines16 = doc.splitTextToSize(valueText16, contentWidth - 4)
-  valueLines16.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 3)
-  })
+  drawCalloutBox(margin, y, contentWidth, 'Value to Your Organization', valueText16, COLORS.C, [248, 248, 252])
 
+  addSidebarQuote(9)
   addFooter(pageNum++)
 
   // PAGE 17: Your Leadership Strengths
@@ -1898,26 +1911,29 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Your Leadership Strengths', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const leaderIntro = `As a ${PROFILES[respondent.primary_style].name} individual, you bring unique leadership capabilities to any team or organization. The chart below shows your BH-DISC Leadership Profile across seven key leadership dimensions.`
-  const leaderLines = doc.splitTextToSize(leaderIntro, contentWidth - 2)
+  const leaderLines = doc.splitTextToSize(leaderIntro, contentWidth)
+  doc.setLineHeightFactor(1.35)
   leaderLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
+  doc.setLineHeightFactor(1.15)
   y += 6
 
-  // Leadership bar chart (horizontal)
+  // Leadership horizontal bar chart with 7 dimensions
   const leadershipScores = LEADERSHIP_SCORES[respondent.primary_style]
   const leadershipDimensions = [
     { label: 'Directing', score: leadershipScores.Directing },
@@ -1930,46 +1946,48 @@ async function generateDiscPDF(respondent) {
   ]
 
   const barChartWidth = contentWidth * 0.6
-  const thresholdX = margin + barChartWidth * 0.5
+  const labelColWidth = 35
+  const thresholdX = margin + labelColWidth + barChartWidth * 0.5
 
   leadershipDimensions.forEach((dim, idx) => {
     const yPos = y + idx * 8
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
+    doc.setFontSize(9)
     doc.setTextColor(...COLORS.NAVY)
     doc.text(dim.label, margin, yPos + 4)
 
     const barWidth = (dim.score / 100) * barChartWidth
     doc.setFillColor(...COLORS.NAVY)
-    doc.rect(margin + 35, yPos, barWidth, 5, 'F')
+    doc.rect(margin + labelColWidth, yPos, barWidth, 5, 'F')
 
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8)
     doc.setTextColor(...COLORS.NAVY)
-    doc.text(dim.score.toString(), margin + 35 + barWidth + 2, yPos + 3)
+    doc.text(dim.score.toString(), margin + labelColWidth + barWidth + 2, yPos + 3.5)
   })
 
   // Threshold line at 50
   doc.setDrawColor(...COLORS.GOLD)
-  doc.setLineWidth(1)
+  doc.setLineWidth(0.8)
   doc.line(thresholdX, y, thresholdX, y + leadershipDimensions.length * 8)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7)
   doc.setTextColor(...COLORS.GOLD)
-  doc.text('Strength Threshold', thresholdX - 5, y - 2, { align: 'center' })
+  doc.text('Strength Threshold', thresholdX - 8, y - 2, { align: 'center' })
 
   y += leadershipDimensions.length * 8 + 8
 
+  // "Your Top Three Leadership Dimensions" section
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
+  doc.setFontSize(13)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Your Top Three Leadership Dimensions', margin, y)
   y += 6
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
-  // Get top 3 leadership dimensions
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
+  
   const sortedDims = Object.entries(leadershipScores)
     .map(([name, score]) => ({ name, score }))
     .sort((a, b) => b.score - a.score)
@@ -1993,22 +2011,24 @@ async function generateDiscPDF(respondent) {
 
   topLeaders.forEach((leader) => {
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(9)
+    doc.setFontSize(10)
     doc.setTextColor(...COLORS.NAVY)
     doc.text(`${leader.num}. ${leader.dim}`, margin, y)
     y += 4
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    doc.setTextColor(50, 50, 50)
+    doc.setFontSize(9)
+    doc.setTextColor(80, 80, 80)
     const leaderText = doc.splitTextToSize(leader.desc, contentWidth - 2)
+    doc.setLineHeightFactor(1.25)
     leaderText.forEach((line) => {
       doc.text(line, margin + 1, y)
       y += 3
     })
+    doc.setLineHeightFactor(1.15)
     y += 2
   })
 
-  addSidebarQuote(8)
+  addSidebarQuote(10)
   addFooter(pageNum++)
 
   // PAGE 18: Your Work Style
@@ -2016,84 +2036,88 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Your Work Style', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const workStyleText18 = PROFILES[respondent.primary_style].work_style || ''
-  const workStyleLines18 = doc.splitTextToSize(workStyleText18, contentWidth - 2)
+  const workStyleLines18 = doc.splitTextToSize(workStyleText18, contentWidth)
+  doc.setLineHeightFactor(1.35)
   workStyleLines18.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
+  doc.setLineHeightFactor(1.15)
   y += 4
 
-  // Know Yourself at Work
+  // Separator line
+  doc.setDrawColor(200, 200, 200)
+  doc.setLineWidth(0.5)
+  doc.line(margin, y, margin + contentWidth, y)
+  y += 4
+
+  // "Know Yourself at Work"
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
+  doc.setFontSize(13)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Know Yourself at Work', margin, y)
   y += 4
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(9)
+  doc.setTextColor(80, 80, 80)
   const knowWorkText18 = `In the workplace, your ${PROFILES[respondent.primary_style].name} style manifests as a consistent pattern of behavior that shapes how you approach tasks, interact with colleagues, and respond to challenges. Understanding this pattern is the first step toward leveraging it intentionally rather than simply reacting to situations. Your natural approach works well in environments that value the qualities of your style.`
-  const knowWorkLines18 = doc.splitTextToSize(knowWorkText18, contentWidth - 2)
+  const knowWorkLines18 = doc.splitTextToSize(knowWorkText18, contentWidth)
+  doc.setLineHeightFactor(1.3)
   knowWorkLines18.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 3
+    doc.text(line, margin, y)
+    y += 3.5
   })
+  doc.setLineHeightFactor(1.15)
   y += 4
 
-  // Grow Yourself at Work
+  // "Grow Yourself at Work"
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
+  doc.setFontSize(13)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Grow Yourself at Work', margin, y)
   y += 4
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 50)
-  const growWorkText18 = `Professional growth for the ${PROFILES[respondent.primary_style].name} style means developing capabilities that complement your natural strengths without trying to become someone you are not. Focus on building skills in areas where your style has natural blind spots. Seek feedback from colleagues with different styles — they see things you miss. Create accountability structures that help you stay focused on growth areas even when your natural tendencies pull you back to your comfort zone.`
-  const growWorkLines18 = doc.splitTextToSize(growWorkText18, contentWidth - 2)
-  growWorkLines18.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 3
-  })
-  y += 3
-
-  // Work Style Insight box
-  doc.setFillColor(210, 240, 250)
-  doc.rect(margin, y, contentWidth, 10, 'FD')
-  doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('Work Style Insight', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 50)
-  doc.text('The most effective Dominant professionals are not the ones who lean hardest into their natural style — they are the ones who have developed the flexibility to', margin + 2, y + 5)
-  doc.text('adapt based on the situation, the audience, and the desired outcome while maintaining the authenticity that makes their Dominant qualities valuable.', margin + 2, y + 8)
-  y += 12
+  doc.setTextColor(80, 80, 80)
+  const growWorkText18 = `Professional growth for the ${PROFILES[respondent.primary_style].name} style means developing capabilities that complement your natural strengths without trying to become someone you are not. Focus on building skills in areas where your style has natural blind spots. Seek feedback from colleagues with different styles — they see things you miss. Create accountability structures that help you stay focused on growth areas even when your natural tendencies pull you back to your comfort zone.`
+  const growWorkLines18 = doc.splitTextToSize(growWorkText18, contentWidth)
+  doc.setLineHeightFactor(1.3)
+  growWorkLines18.forEach((line) => {
+    doc.text(line, margin, y)
+    y += 3.5
+  })
+  doc.setLineHeightFactor(1.15)
+  y += 4
+
+  // Blue callout "Work Style Insight"
+  const workInsightText = 'The most effective Dominant professionals are not the ones who lean hardest into their natural style — they are the ones who have developed the flexibility to adapt based on the situation, the audience, and the desired outcome while maintaining the authenticity that makes their Dominant qualities valuable.'
+  const workInsightHeight = drawCalloutBox(margin, y, contentWidth, 'Work Style Insight', workInsightText, COLORS.C, [248, 248, 252])
+  y += workInsightHeight + 4
 
   // Work Behavior table
   doc.setFillColor(...COLORS.NAVY)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
+  doc.setFontSize(10)
   doc.setTextColor(255, 255, 255)
   const behavColWidth = contentWidth / 2
-  doc.rect(margin, y, behavColWidth, 4, 'F')
-  doc.text('Work Behavior', margin + 1, y + 2.5)
-  doc.rect(margin + behavColWidth, y, behavColWidth, 4, 'F')
-  doc.text('Your Natural Pattern', margin + behavColWidth + 1, y + 2.5)
-  y += 4
+  doc.rect(margin, y, behavColWidth, 5, 'F')
+  doc.text('Work Behavior', margin + 1.5, y + 3.5)
+  doc.rect(margin + behavColWidth, y, behavColWidth, 5, 'F')
+  doc.text('Your Natural Pattern', margin + behavColWidth + 1.5, y + 3.5)
+  y += 5
 
   const workBehaviorsData = WORK_BEHAVIOR[respondent.primary_style]
   const workBehaviors = [
@@ -2104,59 +2128,65 @@ async function generateDiscPDF(respondent) {
     { behavior: 'Under Deadline', pattern: workBehaviorsData.under_deadline },
   ]
 
-  workBehaviors.forEach((item) => {
-    doc.setFillColor(250, 250, 250)
+  workBehaviors.forEach((item, idx) => {
+    doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 252)
     doc.rect(margin, y, behavColWidth, 6, 'F')
     doc.rect(margin + behavColWidth, y, behavColWidth, 6, 'F')
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7.5)
+    doc.setFontSize(9)
     doc.setTextColor(...COLORS.NAVY)
-    doc.text(item.behavior, margin + 1, y + 2)
+    doc.text(item.behavior, margin + 1.5, y + 3.5)
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7.5)
-    doc.setTextColor(50, 50, 50)
-    doc.text(item.pattern, margin + behavColWidth + 1, y + 2)
+    doc.setFontSize(8)
+    doc.setTextColor(80, 80, 80)
+    const patternLines = doc.splitTextToSize(item.pattern, behavColWidth - 2)
+    patternLines.forEach((line, i) => {
+      doc.text(line, margin + behavColWidth + 1.5, y + 1 + i * 2.5)
+    })
     y += 6
   })
 
-  addSidebarQuote(9)
+  addSidebarQuote(11)
   addFooter(pageNum++)
 
-  // PAGE 19: The Dominant Professional
+  // PAGE 19: The [Style] Professional
   doc.addPage()
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text(`The ${PROFILES[respondent.primary_style].name} Professional`, margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const profText = PROFILES[respondent.primary_style].professional_description
-  const profLines = doc.splitTextToSize(profText, contentWidth - 2)
+  const profLines = doc.splitTextToSize(profText, contentWidth)
+  doc.setLineHeightFactor(1.35)
   profLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
+  doc.setLineHeightFactor(1.15)
   y += 4
 
   // Professional Characteristics table
   doc.setFillColor(...COLORS.NAVY)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
+  doc.setFontSize(10)
   doc.setTextColor(255, 255, 255)
   const profColWidth = contentWidth / 2
-  doc.rect(margin, y, profColWidth, 4, 'F')
-  doc.text('Category', margin + 1, y + 2.5)
-  doc.rect(margin + profColWidth, y, profColWidth, 4, 'F')
-  doc.text('Characteristics', margin + profColWidth + 1, y + 2.5)
-  y += 4
+  doc.rect(margin, y, profColWidth, 5, 'F')
+  doc.text('Category', margin + 1.5, y + 3.5)
+  doc.rect(margin + profColWidth, y, profColWidth, 5, 'F')
+  doc.text('Characteristics', margin + profColWidth + 1.5, y + 3.5)
+  y += 5
 
   const profCatsData = PROFILES[respondent.primary_style].professional_categories
   const profCharacteristics = Object.entries(profCatsData).map(([category, chars]) => ({
@@ -2165,79 +2195,48 @@ async function generateDiscPDF(respondent) {
   }))
 
   profCharacteristics.forEach((item, idx) => {
-    doc.setFillColor(idx % 2 === 0 ? 255 : 249, idx % 2 === 0 ? 255 : 249, idx % 2 === 0 ? 255 : 249)
-    doc.rect(margin, y, profColWidth, 18, 'F')
-    doc.rect(margin + profColWidth, y, profColWidth, 18, 'F')
+    doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 252)
+    doc.rect(margin, y, profColWidth, 16, 'F')
+    doc.rect(margin + profColWidth, y, profColWidth, 16, 'F')
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7.5)
+    doc.setFontSize(9)
     doc.setTextColor(...COLORS.NAVY)
-    doc.text(item.category, margin + 1, y + 2)
+    doc.text(item.category, margin + 1.5, y + 2)
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7)
-    doc.setTextColor(50, 50, 50)
+    doc.setFontSize(8)
+    doc.setTextColor(80, 80, 80)
     item.chars.forEach((char, i) => {
-      doc.text(`• ${char}`, margin + profColWidth + 1, y + 2 + i * 4)
+      doc.text(`• ${char}`, margin + profColWidth + 1.5, y + 2 + i * 3.5)
     })
-    y += 18
+    y += 16
   })
 
   y += 3
 
-  // Callout boxes
-  doc.setFillColor(210, 240, 210)
-  doc.rect(margin, y, contentWidth, 9, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 100, 50)
-  doc.text('Roles You Excel In', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
-  doc.setTextColor(50, 50, 50)
+  // Green callout "Roles You Excel In"
   const rolesText = PROFILES[respondent.primary_style].professional_roles.join(', ')
-  const rolesLines = doc.splitTextToSize(rolesText, contentWidth - 4)
-  rolesLines.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 3)
-  })
-  y += 11
+  const rolesHeight = drawCalloutBox(margin, y, contentWidth, 'Roles You Excel In', rolesText, COLORS.S, [248, 248, 252])
+  y += rolesHeight + 3
 
-  doc.setFillColor(240, 220, 210)
-  doc.rect(margin, y, contentWidth, 9, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.setTextColor(139, 69, 19)
-  doc.text('Your Ideal Work Environment', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
-  doc.setTextColor(50, 50, 50)
+  // Camel callout "Your Ideal Work Environment"
   const envText = PROFILES[respondent.primary_style].professional_environment
-  const envLines = doc.splitTextToSize(envText, contentWidth - 4)
-  envLines.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 3)
-  })
-  y += 11
+  const envHeight = drawCalloutBox(margin, y, contentWidth, 'Your Ideal Work Environment', envText, COLORS.CAMEL, [248, 248, 252])
+  y += envHeight + 3
 
-  doc.setFillColor(210, 210, 240)
-  doc.rect(margin, y, contentWidth, 9, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 139)
-  doc.text('How Colleagues Experience You', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
-  doc.setTextColor(50, 50, 50)
+  // Blue callout "How Colleagues Experience You"
   const colleagueText = PROFILES[respondent.primary_style].colleague_experience
-  const colleagueLines = doc.splitTextToSize(colleagueText, contentWidth - 4)
-  colleagueLines.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 3)
-  })
-  y += 11
+  drawCalloutBox(margin, y, contentWidth, 'How Colleagues Experience You', colleagueText, COLORS.C, [248, 248, 252])
 
-  doc.setFont('helvetica', 'italic')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 50)
-  doc.text('Bottom line: you are the person organizations call when results are non-negotiable and someone needs to lead from the front.', margin, y + 1)
+  y += 14
 
-  addSidebarQuote(10)
+  // Bold italic bottom line
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
+  doc.setFontStyle('italic')
+  doc.setTextColor(80, 80, 80)
+  doc.text('Bottom line: you are the person organizations call when results are non-negotiable and someone needs to lead from the front.', margin, y)
+
+  addSidebarQuote(12)
   addFooter(pageNum++)
 
   // PAGE 20: Workplace Tips for Your Style
@@ -2245,38 +2244,41 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Workplace Tips for Your Style', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
   const tipsIntro = 'These ten workplace tips are designed specifically for your behavioral style. Each tip addresses a common situation or challenge and provides practical guidance for maximizing your effectiveness.'
-  const tipsLines = doc.splitTextToSize(tipsIntro, contentWidth - 2)
+  const tipsLines = doc.splitTextToSize(tipsIntro, contentWidth)
+  doc.setLineHeightFactor(1.35)
   tipsLines.forEach((line) => {
-    doc.text(line, margin + 1, y)
-    y += 4
+    doc.text(line, margin, y)
+    y += 4.5
   })
+  doc.setLineHeightFactor(1.15)
   y += 4
 
-  // Workplace tips table (first 5)
+  // Workplace tips table (tips 1-5)
   const tipColWidth = contentWidth / 3
   doc.setFillColor(...COLORS.NAVY)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
+  doc.setFontSize(10)
   doc.setTextColor(255, 255, 255)
-  doc.rect(margin, y, 8, 4, 'F')
-  doc.text('#', margin + 1, y + 2.5)
-  doc.rect(margin + 8, y, tipColWidth - 8, 4, 'F')
-  doc.text('Trait', margin + 10, y + 2.5)
-  doc.rect(margin + tipColWidth, y, contentWidth - tipColWidth, 4, 'F')
-  doc.text('How to Leverage It', margin + tipColWidth + 1, y + 2.5)
-  y += 4
+  doc.rect(margin, y, 8, 5, 'F')
+  doc.text('#', margin + 0.5, y + 3.5)
+  doc.rect(margin + 8, y, tipColWidth - 8, 5, 'F')
+  doc.text('Trait', margin + 9, y + 3.5)
+  doc.rect(margin + tipColWidth, y, contentWidth - tipColWidth, 5, 'F')
+  doc.text('How to Leverage It', margin + tipColWidth + 1.5, y + 3.5)
+  y += 5
 
   const stylesWithTips20 = WORKPLACE_TIPS[respondent.primary_style] || []
   const tips = stylesWithTips20.slice(0, 5).map((tip, idx) => ({
@@ -2285,59 +2287,52 @@ async function generateDiscPDF(respondent) {
     how: tip[1],
   }))
 
-  tips.forEach((tip) => {
-    doc.setFillColor(250, 250, 250)
-    doc.rect(margin, y, 8, 20, 'F')
-    doc.rect(margin + 8, y, tipColWidth - 8, 20, 'F')
-    doc.rect(margin + tipColWidth, y, contentWidth - tipColWidth, 20, 'F')
+  tips.forEach((tip, tipIdx) => {
+    doc.setFillColor(tipIdx % 2 === 0 ? 255 : 248, tipIdx % 2 === 0 ? 255 : 248, tipIdx % 2 === 0 ? 255 : 252)
+    doc.rect(margin, y, 8, 18, 'F')
+    doc.rect(margin + 8, y, tipColWidth - 8, 18, 'F')
+    doc.rect(margin + tipColWidth, y, contentWidth - tipColWidth, 18, 'F')
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
+    doc.setFontSize(10)
     doc.setTextColor(...COLORS.NAVY)
     doc.text(tip.num, margin + 1, y + 2)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7)
+    doc.setFontSize(9)
     doc.setTextColor(...COLORS.NAVY)
-    doc.text(tip.trait, margin + 10, y + 2)
+    doc.text(tip.trait, margin + 9, y + 2)
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.5)
-    doc.setTextColor(50, 50, 50)
+    doc.setFontSize(8)
+    doc.setTextColor(80, 80, 80)
     const howLines = doc.splitTextToSize(tip.how, contentWidth - tipColWidth - 2)
+    doc.setLineHeightFactor(1.25)
     howLines.forEach((line, i) => {
-      doc.text(line, margin + tipColWidth + 1, y + 2 + i * 2.5)
+      doc.text(line, margin + tipColWidth + 1.5, y + 1 + i * 2.5)
     })
-    y += 22
+    doc.setLineHeightFactor(1.15)
+    y += 18
   })
 
   y += 2
 
-  doc.setFillColor(230, 240, 200)
-  doc.rect(margin, y, contentWidth, 10, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(139, 90, 20)
-  doc.text('Why These Tips Matter', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
-  doc.setTextColor(50, 50, 50)
-  const whyText = doc.splitTextToSize('These tips are not about changing who you are. Your natural strengths are genuine assets that organizations need. These tips are about refining how you deploy those strengths so they land the way you intend. The most effective professionals are those who can adapt their approach to the situation while maintaining authenticity.  Remember: the people around you are not obstacles to your goals — they are essential partners in achieving sustainable results.', contentWidth - 4)
-  whyText.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 2.5)
-  })
+  // Gold callout "Why These Tips Matter"
+  const whyText = 'These tips are not about changing who you are. Your natural strengths are genuine assets that organizations need. These tips are about refining how you deploy those strengths so they land the way you intend. The most effective professionals are those who can adapt their approach to the situation while maintaining authenticity. Remember: the people around you are not obstacles to your goals — they are essential partners in achieving sustainable results.'
+  drawCalloutBox(margin, y, contentWidth, 'Why These Tips Matter', whyText, COLORS.GOLD, [248, 248, 252])
 
-  addSidebarQuote(11)
+  addSidebarQuote(13)
   addFooter(pageNum++)
 
-  // PAGE 21: Workplace Tips (continued)
+    // PAGE 21: Workplace Tips (continued)
   doc.addPage()
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Workplace Tips (continued)', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   // Workplace tips table (tips 6-10)
@@ -2424,12 +2419,13 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Application Guide', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -2478,12 +2474,13 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Application Guide (continued)', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   // Questions 4-6
@@ -2535,12 +2532,13 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Your Assessment Scores', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   // Three line graphs (simplified visualization)
@@ -2655,12 +2653,13 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Understanding Your Assessment Graphs', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   // Define dimensions and colors for graphs
@@ -2747,12 +2746,13 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Understanding Your Graphs (continued)', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'bold')
@@ -2812,12 +2812,15 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
-  doc.text('Keyword Analysis: How I Respond Under Pressure', margin, y)
-  y += 2
+  doc.text('Keyword Analysis: How I Respond Under', margin, y)
+  y += 5
+  doc.text('Pressure', margin, y)
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -2890,12 +2893,13 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Keyword Analysis: How I See Myself', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -2967,12 +2971,13 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Your Action Plan', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -3060,12 +3065,13 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('My Development Priorities', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -3122,12 +3128,13 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
+  doc.setFontSize(24)
   doc.setTextColor(...COLORS.NAVY)
   doc.text('Your Next Step', margin, y)
-  y += 2
+  y += 3
   doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
+  doc.setLineWidth(0.8)
+  doc.line(margin, y, margin + 100, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
