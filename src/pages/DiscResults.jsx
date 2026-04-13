@@ -612,14 +612,7 @@ async function generateDiscPDF(respondent) {
   doc.addPage()
   y = margin
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('Your Personality Style Graphs', margin, y)
-  y += 2
-  doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
-  y += 8
+  y = drawPageTitle('Your Personality Style Graphs', y)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
@@ -754,22 +747,9 @@ async function generateDiscPDF(respondent) {
 
   y += 3
 
-  doc.setFillColor(230, 240, 250)
-  doc.rect(margin, y, contentWidth, 12, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('How to Read These Graphs', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 50)
-  const readGraphs = doc.splitTextToSize(
-    'The midline at 50 is the key reference point. Scores above indicate stronger traits. Large differences between Core and Context suggest behavioral adaptation.',
-    contentWidth - 4
-  )
-  readGraphs.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 3)
-  })
+  // How to Read These Graphs callout (navy left-border, matching master)
+  const readGraphsText = 'The bold midline at 50 is the key reference point — scores above it indicate stronger traits in that dimension. Large differences between Core and Context suggest you adapt significantly at work — a \'behavioral mask.\' Large differences between Core and Conflict reveal how stress transforms your approach. These gaps are among the most valuable insights in this report. Your pattern: Dominant (D) is dominant across all three graphs, showing strong behavioral consistency. People experience the same version of you whether calm, at work, or under pressure — a leadership asset that builds trust.'
+  drawCalloutBox(margin, y, contentWidth, 'How to Read These Graphs', readGraphsText, COLORS.NAVY)
 
   addFooter(pageNum++)
 
@@ -778,14 +758,7 @@ async function generateDiscPDF(respondent) {
   y = margin
 
   const styleName = DISC_STYLE_NAMES[respondent.primary_style] || 'Results-Focused'
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text(`The ${styleName} Leader`, margin, y)
-  y += 2
-  doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
-  y += 8
+  y = drawPageTitle(`The ${styleName} Leader`, y)
 
   const profile = PROFILES && PROFILES[respondent.primary_style] ? PROFILES[respondent.primary_style] : null
   const profileText = profile?.narrative || 'You are a results-focused leader who drives action and achievement.'
@@ -851,59 +824,51 @@ async function generateDiscPDF(respondent) {
   })
   y += 3
 
-  // Core Drive box
-  doc.setFillColor(210, 240, 250)
-  doc.setDrawColor(41, 128, 185)
-  doc.rect(margin, y, contentWidth, 14, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('Your Core Drive', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 50)
+  // Core Drive box (left-border callout matching master)
   const coreDriveText = 'Motivation: ' + (profile?.motivation || 'Results, winning, autonomy, recognition.')
-  const coreDriveLines = doc.splitTextToSize(coreDriveText, contentWidth - 4)
-  coreDriveLines.slice(0, 3).forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 3)
-  })
-  y += 4 + coreDriveLines.slice(0, 3).length * 3 + 4
+  const coreDriveH = drawCalloutBox(margin, y, contentWidth, 'Your Core Drive', coreDriveText, COLORS.NAVY)
+  y += coreDriveH + 3
 
-  // Two side-by-side boxes at bottom
+  // Two side-by-side boxes at bottom (left-border callout style matching master)
   const sideBoxWidth = (contentWidth - 2) / 2
-
-  // What Others Experience box
-  doc.setFillColor(240, 240, 240)
-  doc.setDrawColor(200, 150, 12)
-  doc.rect(margin, y, sideBoxWidth, 24, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('What Others Experience', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
-  doc.setTextColor(50, 50, 50)
   const othersText = profile?.colleague_experience || 'Colleagues see you as decisive, direct, and driven.'
-  const othersLines = doc.splitTextToSize(othersText, sideBoxWidth - 4)
-  othersLines.slice(0, 5).forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 2.5)
+  const idealEnvText = profile?.ideal_environment || 'Fast-paced, results-oriented settings where autonomy is high and bureaucracy is low.'
+
+  // What Others Experience box (left-border callout)
+  const othersLines = doc.splitTextToSize(othersText, sideBoxWidth - 12)
+  const othersBoxH = 8 + othersLines.length * 3.8
+  doc.setFillColor(248, 248, 252)
+  doc.rect(margin, y, sideBoxWidth, othersBoxH, 'F')
+  doc.setFillColor(...COLORS.NAVY)
+  doc.rect(margin, y, 1.5, othersBoxH, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
+  doc.setTextColor(...COLORS.NAVY)
+  doc.text('What Others Experience', margin + 5, y + 5)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(50, 50, 50)
+  othersLines.forEach((line, i) => {
+    doc.text(line, margin + 5, y + 9.5 + i * 3.8)
   })
 
-  // Ideal Environment box
-  doc.setFillColor(240, 240, 240)
-  doc.setDrawColor(200, 150, 12)
-  doc.rect(margin + sideBoxWidth + 2, y, sideBoxWidth, 24, 'FD')
+  // Your Ideal Environment box (left-border callout)
+  const envLines = doc.splitTextToSize(idealEnvText, sideBoxWidth - 12)
+  const envBoxH = 8 + envLines.length * 3.8
+  const envX = margin + sideBoxWidth + 2
+  doc.setFillColor(248, 248, 252)
+  doc.rect(envX, y, sideBoxWidth, envBoxH, 'F')
+  doc.setFillColor(...COLORS.NAVY)
+  doc.rect(envX, y, 1.5, envBoxH, 'F')
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
+  doc.setFontSize(10)
   doc.setTextColor(...COLORS.NAVY)
-  doc.text('Your Ideal Environment', margin + sideBoxWidth + 4, y + 2)
+  doc.text('Your Ideal Environment', envX + 5, y + 5)
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
+  doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const idealEnvText = profile?.ideal_environment || 'Fast-paced, results-oriented settings where autonomy is high and bureaucracy is low.'
-  const idealEnvLines = doc.splitTextToSize(idealEnvText, sideBoxWidth - 4)
-  idealEnvLines.slice(0, 5).forEach((line, i) => {
-    doc.text(line, margin + sideBoxWidth + 4, y + 5 + i * 2.5)
+  envLines.forEach((line, i) => {
+    doc.text(line, envX + 5, y + 9.5 + i * 3.8)
   })
 
   addSidebarQuote(1)
@@ -913,14 +878,7 @@ async function generateDiscPDF(respondent) {
   doc.addPage()
   y = margin
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('Your Profile in Depth', margin, y)
-  y += 2
-  doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
-  y += 8
+  y = drawPageTitle('Your Profile in Depth', y)
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
@@ -938,49 +896,29 @@ async function generateDiscPDF(respondent) {
   })
   y += 4
 
-  // Callout boxes
-  const calloutBoxes = [
+  // Callout boxes (left-border style matching master PDF)
+  const calloutBoxes6 = [
     { title: 'Motivated By', color: COLORS.CAMEL, text: profile?.motivated_by || 'Results, recognition, autonomy, clear objectives.' },
     { title: 'Ideal Environment', color: COLORS.I, text: profile?.ideal_environment || 'Action-valued, results-driven, autonomy high, bureaucracy low.' },
     { title: 'Greatest Fear', color: COLORS.D, text: profile?.greatest_fear || 'Loss of control or being taken advantage of.' },
     { title: 'Under Pressure', color: COLORS.C, text: profile?.under_pressure || 'You become more demanding and impatient.' },
   ]
 
-  calloutBoxes.forEach((box, i) => {
-    const boxText = doc.splitTextToSize(box.text, contentWidth - 4)
-    const boxBodyHeight = boxText.length * 3 + 4
-    if (y + 4 + boxBodyHeight > pageHeight - margin - 15) {
+  calloutBoxes6.forEach((box) => {
+    if (y + 16 > pageHeight - margin - 15) {
       addFooter(pageNum++)
       doc.addPage()
       y = margin
     }
-    doc.setFillColor(box.color[0], box.color[1], box.color[2])
-    doc.setTextColor(255, 255, 255)
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(9)
-    doc.rect(margin, y, contentWidth, 4, 'F')
-    doc.text(box.title, margin + 2, y + 2.5)
-    doc.setFillColor(250, 250, 250)
-    doc.setTextColor(50, 50, 50)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    doc.rect(margin, y + 4, contentWidth, boxBodyHeight, 'F')
-    boxText.forEach((line, j) => {
-      doc.text(line, margin + 2, y + 7 + j * 3)
-    })
-    y += 4 + boxBodyHeight + 2
+    const boxH = drawCalloutBox(margin, y, contentWidth, box.title, box.text, box.color)
+    y += boxH + 3
   })
 
   y += 2
-  doc.setFillColor(200, 240, 200)
-  doc.rect(margin, y, contentWidth, 8, 'F')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 100, 50)
-  doc.text('Reflection', margin + 2, y + 2)
-  doc.setFont('helvetica', 'italic')
-  doc.setFontSize(7)
-  doc.text('Think about a recent high-pressure moment. Which of these patterns showed up for you?', margin + 2, y + 5)
+  const reflectH6 = drawCalloutBox(margin, y, contentWidth,
+    'Reflection',
+    'Think about a recent high-pressure moment. Which of these patterns showed up for you? What would you do differently next time?',
+    COLORS.S)
 
   addSidebarQuote(2)
   addFooter(pageNum++)
@@ -989,14 +927,7 @@ async function generateDiscPDF(respondent) {
   doc.addPage()
   y = margin
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('Your Profile in Depth (continued)', margin, y)
-  y += 2
-  doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
-  y += 8
+  y = drawPageTitle('Your Profile in Depth (continued)', y)
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
@@ -1014,41 +945,15 @@ async function generateDiscPDF(respondent) {
   })
   y += 4
 
-  // Value to Team box
-  const valueText = profile?.value_to_team || 'You bring clarity, decisiveness, and momentum. You move teams forward and drive change.'
-  const valueLines = doc.splitTextToSize(valueText, contentWidth - 4)
-  const valueBoxH = valueLines.length * 3 + 6
-  doc.setFillColor(210, 240, 210)
-  doc.rect(margin, y, contentWidth, valueBoxH, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 100, 50)
-  doc.text('Value to Your Team', margin + 2, y + 3)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 50)
-  valueLines.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 6 + i * 3)
-  })
-  y += valueBoxH + 2
+  // Value to Team box (left-border callout matching master)
+  const valueText7 = profile?.value_to_team || 'You bring clarity, decisiveness, and momentum. You move teams forward and drive change.'
+  const valueH7 = drawCalloutBox(margin, y, contentWidth, 'Value to Your Team', valueText7, COLORS.S)
+  y += valueH7 + 3
 
-  // Personal Growth Areas box
-  const growthText = profile?.growth_areas || 'Practice asking for input before deciding. Develop patience with slower processors.'
-  const growthLines = doc.splitTextToSize(growthText, contentWidth - 4)
-  const growthBoxH = growthLines.length * 3 + 6
-  doc.setFillColor(240, 220, 210)
-  doc.rect(margin, y, contentWidth, growthBoxH, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(139, 69, 19)
-  doc.text('Personal Growth Areas', margin + 2, y + 3)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 50)
-  growthLines.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 3)
-  })
-  y += 14
+  // Personal Growth Areas box (left-border callout matching master)
+  const growthText7 = profile?.growth_areas || 'Practice asking for input before deciding. Develop patience with slower processors.'
+  const growthH7 = drawCalloutBox(margin, y, contentWidth, 'Personal Growth Areas', growthText7, COLORS.CAMEL)
+  y += growthH7 + 3
 
   // Know Yourself
   doc.setFont('helvetica', 'bold')
@@ -1082,6 +987,15 @@ async function generateDiscPDF(respondent) {
     doc.text(line, margin + 1, y)
     y += 3.5
   })
+  y += 4
+
+  // Grow Yourself callout (green left-border, matching master)
+  const growCalloutText7 = profile?.grow_yourself || 'Growth for you comes from slowing down enough to bring people with you. Your drive to move forward is immensely valuable, but people matter — and their engagement determines whether your results are sustainable or temporary.'
+  const growCalloutH7 = drawCalloutBox(margin, y, contentWidth, 'Grow Yourself', growCalloutText7, COLORS.S)
+  y += growCalloutH7 + 3
+
+  // Reflection callout (green left-border, matching master)
+  drawCalloutBox(margin, y, contentWidth, 'Reflection', 'What is one growth area you are ready to work on this month? Who could help hold you accountable?', COLORS.S)
 
   addSidebarQuote(3)
   addFooter(pageNum++)
@@ -1090,14 +1004,7 @@ async function generateDiscPDF(respondent) {
   doc.addPage()
   y = margin
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('How to Communicate with Your Style', margin, y)
-  y += 2
-  doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
-  y += 8
+  y = drawPageTitle('How to Communicate with Your Style', y)
 
   // DO / DON'T table
   const doColWidth = contentWidth / 2
@@ -1155,6 +1062,17 @@ async function generateDiscPDF(respondent) {
     doc.text(line, margin + 1, y)
     y += 4
   })
+  y += 4
+
+  // Your Communication Style callout (navy left-border, matching master)
+  const commStyleText8 = profile?.natural_communication || 'Your communication style is direct, decisive, and results-focused. You do not waste words. You say what you think and expect others to do the same. You lead with conclusions and support them with facts when necessary. You prefer brief, focused conversations that move toward a decision or action.'
+  const commStyleH8 = drawCalloutBox(margin, y, contentWidth, 'Your Communication Style', commStyleText8, COLORS.NAVY)
+  y += commStyleH8 + 3
+
+  // When Communicating with You callout (blue left-border, matching master)
+  const whenCommText8 = 'Do: Lead with the bottom line. Be clear about what you need. State conclusions first and back them up with data. Respect their time. Be direct about problems and expectations. Acknowledge their results. Challenge them with bigger goals.\n\nDon\'t: Don\'t bury the lead in background and context. Don\'t waste their time with lengthy meetings. Don\'t question their judgment or authority publicly. Don\'t take credit for their work. Don\'t be indirect or vague. Don\'t give them busy work.'
+  const whenCommH8 = drawCalloutBox(margin, y, contentWidth, 'When Communicating with You', whenCommText8, COLORS.C)
+  y += whenCommH8
 
   addFooter(pageNum++)
 
@@ -1162,14 +1080,7 @@ async function generateDiscPDF(respondent) {
   doc.addPage()
   y = margin
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('Your Position in the DISC Model', margin, y)
-  y += 2
-  doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
-  y += 8
+  y = drawPageTitle('Your Position in the DISC Model', y)
 
   // Large DISC quadrant with primary style highlighted
   const quadX2 = pageWidth / 2
@@ -1243,21 +1154,18 @@ async function generateDiscPDF(respondent) {
 
   y += 5
 
-  // Callout boxes
-  doc.setFillColor(230, 240, 250)
-  doc.rect(margin, y, contentWidth, 12, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('Your Quadrant', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 50)
-  const quadrantText = 'As a Dominant style in the Outgoing + Task quadrant, you combine assertive pace with results focus. You share the Outgoing dimension with I styles — you move quickly and take initiative. But on the Task/People axis, you share the Task dimension with C styles — you prioritize outcomes and precision.'
-  const quadrantLines = doc.splitTextToSize(quadrantText, contentWidth - 4)
-  quadrantLines.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 2.5)
-  })
+  // Reading the Model callout (navy left-border, matching master)
+  const readingModelText = 'The Task/People axis describes your energy direction — Task styles (D, C) focus on objectives and results; People styles (I, S) focus on relationships and harmony. The Outgoing/Reserved axis describes pace — Outgoing styles (D, I) act quickly and assertively; Reserved styles (S, C) move deliberately and methodically. No position is better than another — each brings strengths a high-performing team needs.'
+  const readingModelH = drawCalloutBox(margin, y, contentWidth, 'Reading the Model', readingModelText, COLORS.NAVY)
+  y += readingModelH + 3
+
+  // Your Quadrant callout (navy left-border, matching master)
+  const quadrantText = 'As a Dominant style in the Outgoing + Task quadrant, you combine assertive pace with a results focus. You share the Outgoing dimension with I styles — you both move quickly and take initiative — but differ on the Task/People axis. You share the Task dimension with C styles — you both prioritize outcomes and precision — but differ on pace. These shared and contrasting dimensions reveal your natural allies and potential friction points on any team.'
+  const quadrantH = drawCalloutBox(margin, y, contentWidth, 'Your Quadrant', quadrantText, COLORS.NAVY)
+  y += quadrantH + 3
+
+  // Reflection callout (green left-border, matching master)
+  drawCalloutBox(margin, y, contentWidth, 'Reflection', 'Which colleagues occupy the quadrant diagonally opposite yours? How might understanding their natural wiring improve your working relationship?', COLORS.S)
 
   addSidebarQuote(4)
   addFooter(pageNum++)
@@ -1266,14 +1174,7 @@ async function generateDiscPDF(respondent) {
   doc.addPage()
   y = margin
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('Communicating with Other Styles', margin, y)
-  y += 2
-  doc.setDrawColor(...COLORS.GOLD)
-  doc.line(margin, y, margin + 80, y)
-  y += 8
+  y = drawPageTitle('Communicating with Other Styles', y)
 
   // Communication approach table
   const commTableColWidth = contentWidth / 3
@@ -1320,16 +1221,23 @@ async function generateDiscPDF(respondent) {
 
   y += 3
 
-  doc.setFillColor(230, 240, 250)
-  doc.rect(margin, y, contentWidth, 10, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(...COLORS.NAVY)
-  doc.text('The Golden Rule of DISC Communication', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 50, 50)
-  doc.text('Communicate with others the way THEY need to receive information, not the way YOU prefer to deliver it.', margin + 2, y + 6)
+  // The Golden Rule callout (navy left-border, matching master)
+  const goldenRuleText = 'Communicate with others the way THEY need to receive information, not the way YOU prefer to deliver it. This single shift — from self-centered to other-centered communication — is the most powerful application of the DISC model. When you adapt your style to match your audience, you reduce friction, build trust, and achieve better outcomes with less effort.'
+  const goldenRuleH = drawCalloutBox(margin, y, contentWidth, 'The Golden Rule of DISC Communication', goldenRuleText, COLORS.NAVY)
+  y += goldenRuleH + 3
+
+  // Adapting Your Style callout (navy left-border, matching master)
+  const adaptText = 'Your natural directness is a strength, but it can overwhelm Reserved styles (S and C) who need time to process. When speaking with an S, slow your pace and ask how they feel about the direction — they will commit more deeply when they feel heard. When speaking with a C, bring data and give them time to analyze before expecting a decision — rushing them erodes their trust. With an I, channel your shared energy into collaborative brainstorming before driving to action — they need to feel included in the vision.'
+  const adaptH = drawCalloutBox(margin, y, contentWidth, 'Adapting Your Style', adaptText, COLORS.NAVY)
+  y += adaptH + 3
+
+  // Your Biggest Stretch callout (navy left-border, matching master)
+  const stretchText = 'Your diagonal opposite is the Steady style. Where you push for speed and results, they seek stability and consensus. The friction is real — but so is the payoff. When you learn to slow down for an S, you gain a loyal ally who will execute with a consistency you cannot sustain alone.'
+  const stretchH = drawCalloutBox(margin, y, contentWidth, 'Your Biggest Stretch', stretchText, COLORS.NAVY)
+  y += stretchH + 3
+
+  // Reflection callout (green left-border, matching master)
+  drawCalloutBox(margin, y, contentWidth, 'Reflection', 'Think about someone you find difficult to communicate with. What DISC style might they be? What is one adjustment from the table above you could try in your next conversation with them? Remember — the goal is not to change who you are, but to temporarily adapt how you deliver your message so it lands the way the other person needs to receive it.', COLORS.S)
 
   addSidebarQuote(5)
   addFooter(pageNum++)
@@ -1346,7 +1254,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   // Brief intro paragraph (10pt, 4.5mm line spacing)
@@ -1433,7 +1341,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   // "Your Communication Style" sub-header on left
@@ -1534,7 +1442,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -1645,7 +1553,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   // Compliant (C) in blue
@@ -1734,7 +1642,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -1822,7 +1730,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   // "Know Yourself" section
@@ -1917,7 +1825,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -2042,7 +1950,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -2160,7 +2068,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -2250,7 +2158,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -2332,7 +2240,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   // Workplace tips table (tips 6-10)
@@ -2377,39 +2285,17 @@ async function generateDiscPDF(respondent) {
 
   y += 2
 
-  // Putting It Into Practice callout
-  doc.setFillColor(230, 240, 200)
-  doc.rect(margin, y, contentWidth, 12, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(139, 90, 20)
-  doc.text('Putting It Into Practice', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
-  doc.setTextColor(50, 50, 50)
-  const practiceText = doc.splitTextToSize('Pick one tip each week to focus on intentionally. Start with the ones that feel most uncomfortable — that is where your growth edge lives. Resist the urge to read all ten and move on. Instead, choose one, practice it deliberately for five days, and then reflect on what changed. The goal is not to become someone you are not — it is to become a more effective version of who you already are. Small, consistent adjustments in how you lead, communicate, and connect with others will compound into significant professional growth over time.', contentWidth - 4)
-  practiceText.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 2.5)
-  })
-  y += 18
+  // Putting It Into Practice callout (navy left-border, matching master)
+  const practiceText21 = 'Pick one tip each week to focus on intentionally. Start with the ones that feel most uncomfortable — that is where your growth edge lives. Your natural bias is toward action, so resist the urge to read all ten and move on. Instead, choose one, practice it deliberately for five days, and then reflect on what changed. The goal is not to become someone you are not — it is to become a more effective version of who you already are. Small, consistent adjustments in how you lead, communicate, and delegate will compound into significant professional growth over time.'
+  const practiceH21 = drawCalloutBox(margin, y, contentWidth, 'Putting It Into Practice', practiceText21, COLORS.NAVY)
+  y += practiceH21 + 3
 
-  // Your Priority Focus Areas callout
+  // Your Priority Focus Areas callout (navy left-border, matching master)
   const tipTitle2 = stylesWithTips21.length > 1 ? stylesWithTips21[1][0] : 'Tip 2'
   const tipTitle4 = stylesWithTips21.length > 3 ? stylesWithTips21[3][0] : 'Tip 4'
   const tipTitle7 = stylesWithTips21.length > 6 ? stylesWithTips21[6][0] : 'Tip 7'
-  doc.setFillColor(210, 210, 240)
-  doc.rect(margin, y, contentWidth, 10, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 139)
-  doc.text('Your Priority Focus Areas', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
-  doc.setTextColor(50, 50, 50)
-  const priorityText = doc.splitTextToSize(`Your top three priority tips: #2 ${tipTitle2}, #4 ${tipTitle4}, and #7 ${tipTitle7}. These three areas represent the highest-leverage changes you can make — they address the gap between your intent (results) and how others experience your pursuit of those results.`, contentWidth - 4)
-  priorityText.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 2.5)
-  })
+  const priorityText21 = `Your top three priority tips: #2 ${tipTitle2}, #4 ${tipTitle4}, and #7 ${tipTitle7}. These three areas represent the highest-leverage changes you can make — they address the gap between your intent (results) and how others experience your pursuit of those results.`
+  drawCalloutBox(margin, y, contentWidth, 'Your Priority Focus Areas', priorityText21, COLORS.C)
 
   addSidebarQuote(12)
   addFooter(pageNum++)
@@ -2425,7 +2311,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -2480,7 +2366,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   // Questions 4-6
@@ -2509,20 +2395,9 @@ async function generateDiscPDF(respondent) {
     y += 27
   }
 
-  // Making It Stick callout
-  doc.setFillColor(230, 240, 200)
-  doc.rect(margin, y, contentWidth, 12, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(139, 90, 20)
-  doc.text('Making It Stick', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
-  doc.setTextColor(50, 50, 50)
-  const stickText = doc.splitTextToSize('Research shows that writing down your commitments increases follow-through by over 40%. Revisit these questions after 30 days and again after 90 days. Notice how your answers evolve as your self-awareness deepens. Share your commitment statement (Question 6) with someone you trust — accountability transforms intention into action. The goal is not perfection; it is progress. Every small, intentional adjustment you make compounds over time into meaningful behavioral growth.', contentWidth - 4)
-  stickText.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 2.5)
-  })
+  // Making It Stick callout (camel left-border, matching master)
+  const stickText23 = 'Research shows that writing down your commitments increases follow-through by over 40%. Revisit these questions after 30 days and again after 90 days. Notice how your answers evolve as your self-awareness deepens. Share your commitment statement (Question 6) with someone you trust — accountability transforms intention into action. The goal is not perfection; it is progress. Every small, intentional adjustment you make compounds over time into meaningful behavioral growth.'
+  drawCalloutBox(margin, y, contentWidth, 'Making It Stick', stickText23, COLORS.CAMEL)
 
   addSidebarQuote(14)
   addFooter(pageNum++)
@@ -2538,7 +2413,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   // Three line graphs (simplified visualization)
@@ -2630,20 +2505,14 @@ async function generateDiscPDF(respondent) {
 
   y += 3
 
-  // Understanding Your Scores callout
-  doc.setFillColor(240, 230, 210)
-  doc.rect(margin, y, contentWidth, 9, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.setTextColor(139, 69, 19)
-  doc.text('Understanding Your Scores', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
-  doc.setTextColor(50, 50, 50)
-  const understandText = doc.splitTextToSize('Scores above 60 indicate a strong behavioral tendency. Scores between 40-60 indicate moderate tendencies. Scores below 40 are not part of your natural preference. Significant variations between graphs reveal how much you adapt your behavior in different contexts.', contentWidth - 4)
-  understandText.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 2.5)
-  })
+  // Understanding Your Scores callout (navy left-border, matching master)
+  const understandText24 = 'Scores above 60 indicate a strong behavioral tendency. Scores between 40-60 indicate moderate tendencies. Scores below 40 are not part of your natural preference. Significant variations between graphs reveal how much you adapt your behavior in different contexts.'
+  const understandH24 = drawCalloutBox(margin, y, contentWidth, 'Understanding Your Scores', understandText24, COLORS.NAVY)
+  y += understandH24 + 3
+
+  // Your Score Pattern callout (navy left-border, matching master)
+  const patternText24 = 'Your primary style (Dominant) shows a 7-point spread across the three graphs, indicating high behavioral consistency. Your public behavior, private tendencies, and self-image are closely aligned — you tend to show up the same way regardless of context. This consistency builds trust because people always know what to expect from you.'
+  drawCalloutBox(margin, y, contentWidth, 'Your Score Pattern', patternText24, COLORS.NAVY)
 
   addSidebarQuote(15)
   addFooter(pageNum++)
@@ -2659,7 +2528,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   // Define dimensions and colors for graphs
@@ -2752,7 +2621,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'bold')
@@ -2820,7 +2689,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -2870,20 +2739,14 @@ async function generateDiscPDF(respondent) {
   })
   y += 62
 
-  // Reflection callout
-  doc.setFillColor(230, 240, 200)
-  doc.rect(margin, y, contentWidth, 8, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.setTextColor(139, 90, 20)
-  doc.text('Reflection', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(6.5)
-  doc.setTextColor(50, 50, 50)
-  const reflectText = doc.splitTextToSize('Which keywords did you check? Do they match how you think others experience you under pressure, or does your self-perception differ? This gap is often where powerful growth work happens.', contentWidth - 4)
-  reflectText.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 2)
-  })
+  // Reflection callout (green left-border, matching master)
+  const reflectText27 = 'How many keywords did you check? The keywords you selected reveal your dominant stress responses. Pay attention to the ones you did NOT check — these may represent growth areas or behaviors you have already developed beyond. Share your selections with someone who knows you well and ask if they agree. Their perspective often reveals patterns you cannot see yourself.'
+  const reflectH27 = drawCalloutBox(margin, y, contentWidth, 'Reflection', reflectText27, COLORS.S)
+  y += reflectH27 + 3
+
+  // Your Pressure Pattern callout (navy left-border, matching master)
+  const pressurePatternText = 'Under pressure, Dominant styles tend to become more directive, more impatient, and more focused on outcomes at the expense of relationships. You may notice yourself making decisions faster, listening less, and pushing harder. This is your behavioral autopilot — it is not wrong, but it is worth recognizing so you can choose whether to engage it or override it in any given moment.'
+  drawCalloutBox(margin, y, contentWidth, 'Your Pressure Pattern', pressurePatternText, COLORS.NAVY)
 
   addSidebarQuote(18)
   addFooter(pageNum++)
@@ -2899,7 +2762,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -2948,20 +2811,14 @@ async function generateDiscPDF(respondent) {
   })
   y += 62
 
-  // Synthesis callout
-  doc.setFillColor(210, 240, 210)
-  doc.rect(margin, y, contentWidth, 8, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  doc.setTextColor(50, 100, 50)
-  doc.text('Synthesis', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(6.5)
-  doc.setTextColor(50, 50, 50)
-  const synthText = doc.splitTextToSize('Notice the overlap between how you see yourself and how you respond under pressure. Large gaps suggest blind spots — places where your self-image diverges from your stress-response patterns. These gaps are opportunities for growth and deeper self-awareness.', contentWidth - 4)
-  synthText.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 2)
-  })
+  // Synthesis callout (green left-border, matching master)
+  const synthText28 = 'Compare the keywords you checked on this page with the keywords you checked on the previous page. Your pressure keywords reveal how you behave when things are difficult. Your self-perception keywords reveal how you see yourself at your best. The gap between these two sets of keywords is where your most important growth work happens — closing the gap between who you are under pressure and who you aspire to be.'
+  const synthH28 = drawCalloutBox(margin, y, contentWidth, 'Synthesis', synthText28, COLORS.S)
+  y += synthH28 + 3
+
+  // What Your Selections Reveal callout (navy left-border, matching master)
+  const selectionsText28 = 'The keywords you identify with on this page represent your aspirational self — the leader you want to be. Notice whether these positive traits show up consistently in your daily behavior or whether they are ideals you hold but do not always practice. The most powerful growth comes from aligning your under-pressure behavior with your best-self keywords. Ask yourself: when did I last demonstrate each keyword I checked? If the answer is not recent, that is a growth opportunity.'
+  drawCalloutBox(margin, y, contentWidth, 'What Your Selections Reveal', selectionsText28, COLORS.NAVY)
 
   addSidebarQuote(19)
   addFooter(pageNum++)
@@ -2977,7 +2834,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -3045,17 +2902,14 @@ async function generateDiscPDF(respondent) {
 
   y += 2
 
-  // How to Use This Checklist callout
-  doc.setFillColor(240, 220, 210)
-  doc.rect(margin, y, contentWidth, 6, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(7)
-  doc.setTextColor(139, 69, 19)
-  doc.text('How to Use This Checklist', margin + 2, y + 1)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(6)
-  doc.setTextColor(50, 50, 50)
-  doc.text('Which statements surprised you? Which did you strongly agree or disagree with? Use your answers to start conversations with colleagues or mentors about how they experience your style.', margin + 2, y + 3.5)
+  // How to Use This Checklist callout (green left-border, matching master)
+  const checklistText29 = 'Count the number of Yes responses on the left column (strengths) and the right column (growth areas). If you marked Yes to 7 or more strengths, your natural style is well-developed and visible to others. If you marked Yes to 5 or more growth areas, you have significant self-awareness about where your style can create friction. The items you marked No on the strengths side — and Yes on the growth side — represent your highest-priority development areas.'
+  const checklistH29 = drawCalloutBox(margin, y, contentWidth, 'How to Use This Checklist', checklistText29, COLORS.S)
+  y += checklistH29 + 3
+
+  // Your Next Step callout (navy left-border, matching master)
+  const nextStepText29 = 'Circle the three statements on the right column where you marked Yes that you most want to address. These are the behaviors that, if modified, would have the greatest positive impact on your relationships and effectiveness. Bring these to the Development Priorities page that follows and turn them into specific, time-bound commitments.'
+  drawCalloutBox(margin, y, contentWidth, 'Your Next Step', nextStepText29, COLORS.NAVY)
 
   addSidebarQuote(20)
   addFooter(pageNum++)
@@ -3071,7 +2925,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -3134,7 +2988,7 @@ async function generateDiscPDF(respondent) {
   y += 3
   doc.setDrawColor(...COLORS.GOLD)
   doc.setLineWidth(0.8)
-  doc.line(margin, y, margin + 100, y)
+  doc.line(margin, y, pageWidth - margin, y)
   y += 8
 
   doc.setFont('helvetica', 'normal')
@@ -3175,20 +3029,9 @@ async function generateDiscPDF(respondent) {
 
   y += 2
 
-  // Your BH-DISC Coach callout
-  doc.setFillColor(210, 210, 240)
-  doc.rect(margin, y, contentWidth, 8, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 139)
-  doc.text('Your BH-DISC Coach', margin + 2, y + 2)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
-  doc.setTextColor(50, 50, 50)
-  const coachText = doc.splitTextToSize('If you would like support in translating these insights into lasting behavioral change, consider connecting with a Blue Hen Agency coach. Our coaches specialize in helping leaders and professionals leverage their behavioral strengths and address blind spots. Contact Blue Hen Agency to learn more about coaching services that can accelerate your growth.', contentWidth - 4)
-  coachText.forEach((line, i) => {
-    doc.text(line, margin + 2, y + 5 + i * 2.5)
-  })
+  // Your BH-DISC Coach callout (navy left-border, matching master)
+  const coachText31 = 'Your behavioral style is not a limitation — it is a foundation. You have the capacity to grow, adapt, and develop new capabilities while remaining authentically yourself. This report is a tool to help you do that with clarity and purpose. Your Blue Hen coach is available to help you interpret your results, set development goals, and track your progress. Contact us to schedule your debrief session.'
+  drawCalloutBox(margin, y, contentWidth, 'Your BH-DISC Coach', coachText31, COLORS.NAVY)
 
   y = pageHeight - 24
 
