@@ -2138,11 +2138,14 @@ async function generateDiscPDF(respondent) {
   y += 14
 
   // Bold italic bottom line
-  doc.setFont('helvetica', 'bold')
+  doc.setFont('helvetica', 'bolditalic')
   doc.setFontSize(10)
-  doc.setFontStyle('italic')
   doc.setTextColor(80, 80, 80)
-  doc.text('Bottom line: you are the person organizations call when results are non-negotiable and someone needs to lead from the front.', margin, y)
+  const bottomLineText = doc.splitTextToSize('Bottom line: you are the person organizations call when results are non-negotiable and someone needs to lead from the front.', contentWidth)
+  bottomLineText.forEach((line) => {
+    doc.text(line, margin, y)
+    y += 4
+  })
 
   addSidebarQuote(12)
   addFooter(pageNum++)
