@@ -516,7 +516,7 @@ async function generateDiscPDF(respondent) {
   doc.setFillColor(...COLORS.NAVY)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(8)
-  doc.setTextColor(255, 255, 255)
+  doc.setTextColor(255, 255, 255);
 
   ['Dimension', 'D — Dominant', 'I — Influencing', 'S — Steady', 'C — Compliant'].forEach((header, i) => {
     if (i === 0) doc.setFillColor(...COLORS.NAVY)
