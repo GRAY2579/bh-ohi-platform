@@ -641,7 +641,7 @@ async function generateDiscPDF(respondent) {
   y += 8
 
   const profileText = PROFILES && PROFILES[respondent.primary_style]
-    ? PROFILES[respondent.primary_style].description
+    ? PROFILES[respondent.primary_style].narrative
     : 'You are a results-focused leader who drives action and achievement.'
 
   doc.setFont('helvetica', 'normal')
@@ -2736,7 +2736,8 @@ async function generateDiscPDF(respondent) {
       doc.setFontSize(7)
       doc.setTextColor(50, 50, 50)
       const t2Lines = doc.splitTextToSize(trait2, colWidth - 12)
-      const t2Height = Math.max(trait1 ? (col1Traits[i].length * 0.1) : 4, t2Lines.length * 2.5 + 4)
+      const t1LinesForHeight = trait1 ? doc.splitTextToSize(trait1, colWidth - 12) : []
+      const t2Height = Math.max(trait1 ? (t1LinesForHeight.length * 2.5 + 4) : 4, t2Lines.length * 2.5 + 4)
       doc.rect(margin + colWidth + 1, y, colWidth - 1, t2Height, 'F')
       t2Lines.forEach((line, i) => {
         doc.text(line, margin + colWidth + 2, y + 2 + i * 2.5)
@@ -2748,7 +2749,9 @@ async function generateDiscPDF(respondent) {
       doc.text('N', margin + 2 * colWidth - 3, y + 2)
     }
 
-    y += Math.max(trait1 ? (col1Traits[i].length * 0.15 + 4) : 4, trait2 ? (col2Traits[i].length * 0.15 + 4) : 4) + 2
+    const rowT1Lines = trait1 ? doc.splitTextToSize(trait1, colWidth - 12) : []
+    const rowT2Lines = trait2 ? doc.splitTextToSize(trait2, colWidth - 12) : []
+    y += Math.max(trait1 ? (rowT1Lines.length * 2.5 + 4) : 4, trait2 ? (rowT2Lines.length * 2.5 + 4) : 4) + 2
   }
 
   y += 2
@@ -2917,7 +2920,7 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // Save PDF
-  const filename = `BH-DISC_Report_${respondent.name.replace(/\s+/g, '_')}.pdf`
+  const filename = `BH-DISC_Report_${(respondent.name || 'Report').replace(/\s+/g, '_')}.pdf`
   doc.save(filename)
 
   try {
