@@ -54,6 +54,10 @@ export default function Dashboard() {
   const [newEmail, setNewEmail] = useState('')
   const [bulkEmails, setBulkEmails] = useState('')
   const [addCount, setAddCount] = useState('10')
+  const [newIsLeader, setNewIsLeader] = useState(false)
+
+  // DISC respondents state
+  const [discRespondents, setDiscRespondents] = useState([])
 
   const shareRef = useRef(null)
 
@@ -91,6 +95,11 @@ export default function Dashboard() {
         .order('created_at', { ascending: true })
       if (e2) throw e2
       setRespondents(resp || [])
+
+      const { data: discResp } = await supabase
+        .from('ohi_disc_respondents').select('*').eq('engagement_id', id)
+        .order('created_at', { ascending: true })
+      setDiscRespondents(discResp || [])
 
       // load email log
       const { data: emails } = await supabase
@@ -187,11 +196,34 @@ export default function Dashboard() {
     if (!newEmail.trim()) return
     try {
       setActionLoading(true)
-      const { error } = await supabase.from('ohi_respondents').insert([{
-        engagement_id: id, token: generateToken(), email: newEmail.trim(), status: 'pending',
-      }])
-      if (error) throw error
+      const oToken = generateToken()
+      const { data: respData, error: e1 } = await supabase.from('ohi_respondents').insert([{
+        engagement_id: id, token: oToken, email: newEmail.trim(), status: 'pending',
+        is_leader: newIsLeader, disc_token: newIsLeader ? generateToken() : null,
+      }]).select()
+      if (e1) throw e1
+
+      if (newIsLeader && respData && respData[0]) {
+        const discToken = generateToken()
+        const { error: e2 } = await supabase.from('ohi_disc_respondents').insert([{
+          engagement_id: id,
+          ohi_respondent_id: respData[0].id,
+          email: newEmail.trim(),
+          token: discToken,
+          name: newEmail.trim(),
+          status: 'pending',
+        }])
+        if (e2) throw e2
+
+        // Update the respondent with the disc_token
+        const { error: e3 } = await supabase.from('ohi_respondents').update({
+          disc_token: discToken,
+        }).eq('id', respData[0].id)
+        if (e3) throw e3
+      }
+
       setNewEmail('')
+      setNewIsLeader(false)
       await fetchData()
       flash('Respondent added')
     } catch (err) { setError(err.message) } finally { setActionLoading(false) }
@@ -407,6 +439,7 @@ export default function Dashboard() {
     { key: 'completion', label: 'Completion Grid' },
     { key: 'links', label: 'Survey Links' },
     { key: 'email', label: 'Email Manager' },
+    { key: 'disc', label: 'DISC Tracker' },
     { key: 'emails_sent', label: 'Project Emails' },
   ]
 
@@ -517,7 +550,7 @@ export default function Dashboard() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#131B55' }}>
-                      {['EMAIL / TOKEN', 'STATUS', 'STARTED', 'COMPLETED', 'DURATION', ''].map(h => (
+                      {['EMAIL / TOKEN', 'LEADER', 'STATUS', 'STARTED', 'COMPLETED', 'DURATION', ''].map(h => (
                         <th key={h || '_actions'} style={{ padding: '12px 16px', textAlign: h ? 'left' : 'center', fontSize: 11, fontWeight: 700, color: '#fff', letterSpacing: 0.8, width: h ? undefined : 50 }}>{h}</th>
                       ))}
                     </tr>
@@ -529,6 +562,11 @@ export default function Dashboard() {
                         onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
                         <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: '#131B55' }}>
                           {r.email || <span style={{ fontFamily: 'monospace', color: '#888' }}>{r.token}</span>}
+                        </td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                          {r.is_leader ? (
+                            <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 4, fontSize: 11, fontWeight: 700, background: '#C8960C18', color: '#C8960C' }}>LEADER</span>
+                          ) : '—'}
                         </td>
                         <td style={{ padding: '12px 16px' }}>
                           <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 4, fontSize: 12, fontWeight: 600, background: `${statusColor(r.status)}18`, color: statusColor(r.status), textTransform: 'capitalize' }}>
@@ -656,6 +694,95 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* ── Tab: DISC Tracker ──────────────────────────── */}
+        {activeTab === 'disc' && (
+          <div style={S.card}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+              {(() => {
+                const total = discRespondents.length
+                const completed = discRespondents.filter(r => r.status === 'completed').length
+                const pending = discRespondents.filter(r => r.status === 'pending' || r.status === 'in_progress').length
+                const reportsGenerated = discRespondents.filter(r => r.report_generated).length
+                return [
+                  { label: 'TOTAL ASSESSMENTS', value: total },
+                  { label: 'COMPLETED', value: completed },
+                  { label: 'PENDING', value: pending },
+                  { label: 'REPORTS GENERATED', value: reportsGenerated },
+                ]
+              })().map((t, i) => (
+                <div key={i} style={S.tile}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#888', letterSpacing: 1, marginBottom: 8 }}>{t.label}</div>
+                  <div style={{ fontSize: 32, fontWeight: 800, color: '#131B55' }}>{t.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: '#131B55' }}>
+                DISC Assessment Tracker ({discRespondents.length})
+              </h3>
+              {discRespondents.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>
+                  No DISC assessments yet. Add respondents marked as "Leader" to get started.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#131B55' }}>
+                        {['NAME', 'EMAIL', 'STATUS', 'PRIMARY STYLE', 'COMPLETED', 'REPORT', ''].map(h => (
+                          <th key={h || '_actions'} style={{ padding: '12px 16px', textAlign: h ? 'left' : 'center', fontSize: 11, fontWeight: 700, color: '#fff', letterSpacing: 0.8, width: h ? undefined : 50 }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {discRespondents.map(r => {
+                        const discStyleColor = {
+                          'D': '#C0392B',
+                          'I': '#F39C12',
+                          'S': '#27AE60',
+                          'C': '#2980B9',
+                        }[r.primary_style?.[0]]
+                        return (
+                          <tr key={r.id} style={{ borderBottom: '1px solid #E2E2EA' }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#F8F8FC'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                            <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: '#131B55' }}>{r.name || '—'}</td>
+                            <td style={{ padding: '12px 16px', fontSize: 13, color: '#666' }}>{r.email || '—'}</td>
+                            <td style={{ padding: '12px 16px' }}>
+                              <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 4, fontSize: 12, fontWeight: 600, background: `${statusColor(r.status)}18`, color: statusColor(r.status), textTransform: 'capitalize' }}>
+                                {r.status?.replace('_', ' ')}
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                              {r.status === 'completed' && r.primary_style ? (
+                                <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 4, fontSize: 11, fontWeight: 700, background: `${discStyleColor}18`, color: discStyleColor }}>
+                                  {r.primary_style}
+                                </span>
+                              ) : '—'}
+                            </td>
+                            <td style={{ padding: '12px 16px', fontSize: 13, color: '#666' }}>{r.completed_at ? fmtDate(r.completed_at) : '—'}</td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                              {r.report_generated ? <span style={{ color: '#1B8415', fontSize: 16 }}>✓</span> : '—'}
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                              {r.status === 'completed' && (
+                                <a href={`/disc/results/${r.token}`} target="_blank" rel="noopener noreferrer" style={{ color: '#92C0E9', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                                  View Results
+                                </a>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ── Tab: Project Emails ───────────────────────── */}
         {activeTab === 'emails_sent' && (
           <div style={S.card}>
@@ -744,6 +871,18 @@ export default function Dashboard() {
                 <div style={{ marginBottom: 16 }}>
                   <label style={S.label}>Email Address</label>
                   <input type="email" style={S.input} value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="respondent@example.com" />
+                </div>
+                <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    id="isLeaderToggle"
+                    checked={newIsLeader}
+                    onChange={e => setNewIsLeader(e.target.checked)}
+                    style={{ cursor: 'pointer', width: 18, height: 18 }}
+                  />
+                  <label htmlFor="isLeaderToggle" style={{ cursor: 'pointer', fontSize: 14, color: '#374151', fontWeight: 500 }}>
+                    Is Leader (receives DISC assessment)
+                  </label>
                 </div>
                 <button style={{ ...S.btnSm, background: '#131B55', color: '#fff', border: 'none', width: '100%', padding: '12px' }}
                   onClick={handleAddSingle} disabled={actionLoading || !newEmail.trim()}>

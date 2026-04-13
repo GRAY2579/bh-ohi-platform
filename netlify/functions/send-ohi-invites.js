@@ -61,17 +61,20 @@ exports.handler = async (event) => {
 
     for (const resp of withEmail) {
       const surveyUrl = `${SITE_URL}/survey/${resp.token}`
+      const discUrl = resp.is_leader && resp.disc_token ? `${SITE_URL}/disc/${resp.disc_token}` : null
       const emailBody = body
-        ? body.replace(/\{survey_link\}/g, surveyUrl).replace(/\{name\}/g, resp.email.split('@')[0]).replace(/\{close_date\}/g, closeDateStr)
+        ? body.replace(/\{survey_link\}/g, surveyUrl).replace(/\{disc_link\}/g, discUrl || '').replace(/\{name\}/g, resp.email.split('@')[0]).replace(/\{close_date\}/g, closeDateStr)
         : null
 
       const html = buildInviteHTML({
         engagementName: eng.name,
         clientName: eng.client_name,
         surveyUrl,
+        discUrl,
         closeDate: closeDateStr,
         duration,
         customBody: emailBody,
+        isLeader: resp.is_leader,
       })
 
       try {
@@ -129,7 +132,7 @@ exports.handler = async (event) => {
 
 /* ── HTML Template ──────────────────────────────────────────── */
 
-function buildInviteHTML({ engagementName, clientName, surveyUrl, closeDate, duration, customBody }) {
+function buildInviteHTML({ engagementName, clientName, surveyUrl, discUrl, closeDate, duration, customBody, isLeader }) {
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#F0F1F5;font-family:Arial,Helvetica,sans-serif;">
@@ -151,12 +154,24 @@ ${customBody ? customBody.replace(/\n/g, '<br>') : `
   <p style="font-size:15px;color:#333;line-height:1.6;margin:0 0 16px;">You have been selected to participate in the <strong>${engagementName}</strong> Organizational Health Index assessment for <strong>${clientName}</strong>.</p>
   <p style="font-size:15px;color:#333;line-height:1.6;margin:0 0 24px;">This confidential survey takes approximately <strong>${duration} minutes</strong> to complete. Your individual responses will remain anonymous and will be combined with others to create an organizational health report.</p>
 
-  <!-- CTA Button -->
+  <!-- CTA Button: OHI Survey -->
   <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:8px 0 24px;">
-    <a href="${surveyUrl}" style="display:inline-block;background:#131B55;color:#ffffff;padding:14px 40px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:15px;letter-spacing:0.5px;">Begin Survey</a>
+    <a href="${surveyUrl}" style="display:inline-block;background:#131B55;color:#ffffff;padding:14px 40px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:15px;letter-spacing:0.5px;">Begin OHI Survey</a>
   </td></tr></table>
 
-  <p style="font-size:14px;color:#666;line-height:1.5;margin:0 0 8px;">Please complete the survey by <strong>${closeDate}</strong>.</p>
+${isLeader && discUrl ? `
+  <!-- DISC Section for Leaders -->
+  <div style="background:#FFF8E6;border-radius:6px;padding:20px;margin:0 0 24px;border-left:4px solid #C8960C;">
+    <p style="font-size:14px;color:#333;margin:0 0 12px;line-height:1.5;">
+      <strong style="color:#884934;">Leadership Assessment:</strong> As a leader in this engagement, you have also been selected to complete the <strong>BH-DISC&#8482; Behavioral Assessment</strong>. This 7-minute assessment provides a personalized behavioral profile report that you can download immediately upon completion.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:4px 0 0;">
+      <a href="${discUrl}" style="display:inline-block;background:#884934;color:#ffffff;padding:12px 36px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:14px;letter-spacing:0.5px;">Begin DISC Assessment</a>
+    </td></tr></table>
+  </div>
+` : ''}
+
+  <p style="font-size:14px;color:#666;line-height:1.5;margin:0 0 8px;">Please complete ${isLeader && discUrl ? 'both assessments' : 'the survey'} by <strong>${closeDate}</strong>.</p>
   <p style="font-size:14px;color:#666;line-height:1.5;margin:0;">If you have any questions, please contact your organization's administrator.</p>
 `}
 </td></tr>

@@ -10,6 +10,8 @@ import NewEngagement from './pages/NewEngagement'
 import Dashboard from './pages/Dashboard'
 import Survey from './pages/Survey'
 import CompletionPage from './pages/CompletionPage'
+import DiscSurvey from './pages/DiscSurvey'
+import DiscResults from './pages/DiscResults'
 
 // Simple auth check
 function ProtectedRoute({ children }) {
@@ -26,6 +28,8 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/survey/:token" element={<Survey />} />
         <Route path="/survey/complete" element={<CompletionPage />} />
+        <Route path="/disc/:token" element={<DiscSurvey />} />
+        <Route path="/disc/results/:token" element={<DiscResults />} />
 
         {/* Admin routes (protected) */}
         <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
