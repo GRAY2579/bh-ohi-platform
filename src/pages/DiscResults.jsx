@@ -322,6 +322,7 @@ async function generateDiscPDF(respondent) {
   let pageNum = 1
 
   // PAGE 1: Cover Page
+  console.log('PDF: Starting PAGE 1')
   doc.setFillColor(...COLORS.NAVY)
   doc.rect(0, 0, pageWidth, pageHeight * 0.6, 'F')
 
@@ -871,6 +872,7 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 8: How to Communicate with Your Style
+  console.log('PDF: Starting PAGE 8')
   doc.addPage()
   y = margin
 
@@ -1553,6 +1555,7 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 16: Your Strengths in Your Style
+  console.log('PDF: Starting PAGE 16')
   doc.addPage()
   y = margin
 
@@ -2247,6 +2250,7 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 24: Your Assessment Scores
+  console.log('PDF: Starting PAGE 24')
   doc.addPage()
   y = margin
 
@@ -2834,6 +2838,7 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 31: Your Next Step
+  console.log('PDF: Starting PAGE 31')
   doc.addPage()
   y = margin
 
