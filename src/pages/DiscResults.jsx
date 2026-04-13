@@ -392,6 +392,7 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 2: Understanding DISC
+  console.log('PDF: Starting PAGE 2')
   doc.addPage()
   let y = margin
 
@@ -490,6 +491,7 @@ async function generateDiscPDF(respondent) {
 
   // Continue with remaining pages 3-20 (abbreviated for length - full implementation available)
   // PAGE 3: The Four DISC Styles Table
+  console.log('PDF: Starting PAGE 3')
   doc.addPage()
   y = margin
 
@@ -567,6 +569,7 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 4: Your Personality Style Graphs (simplified)
+  console.log('PDF: Starting PAGE 4')
   doc.addPage()
   y = margin
 
@@ -628,6 +631,7 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 5: The [Style] Leader
+  console.log('PDF: Starting PAGE 5')
   doc.addPage()
   y = margin
 
@@ -724,6 +728,7 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 6-7: Your Profile in Depth (2 pages)
+  console.log('PDF: Starting PAGE 6')
   doc.addPage()
   y = margin
 
@@ -798,6 +803,7 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 7: Your Profile in Depth (continued)
+  console.log('PDF: Starting PAGE 7')
   doc.addPage()
   y = margin
 
