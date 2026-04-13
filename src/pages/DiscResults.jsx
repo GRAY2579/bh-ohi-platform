@@ -279,6 +279,13 @@ async function generateDiscPDF(respondent) {
     format: 'letter',
   })
 
+  // Safety wrapper: ensure splitTextToSize never returns undefined
+  const origSplit = doc.splitTextToSize.bind(doc)
+  doc.splitTextToSize = (text, maxWidth, options) => {
+    if (text === undefined || text === null) return ['']
+    return origSplit(String(text), maxWidth, options) || ['']
+  }
+
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
   const margin = 16
@@ -322,7 +329,7 @@ async function generateDiscPDF(respondent) {
   let pageNum = 1
 
   // PAGE 1: Cover Page
-  console.log('PDF: Starting PAGE 1')
+
   doc.setFillColor(...COLORS.NAVY)
   doc.rect(0, 0, pageWidth, pageHeight * 0.6, 'F')
 
@@ -392,8 +399,9 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 2: Understanding DISC
-  console.log('PDF: Starting PAGE 2')
+
   doc.addPage()
+
   let y = margin
 
   doc.setFont('helvetica', 'bold')
@@ -491,7 +499,6 @@ async function generateDiscPDF(respondent) {
 
   // Continue with remaining pages 3-20 (abbreviated for length - full implementation available)
   // PAGE 3: The Four DISC Styles Table
-  console.log('PDF: Starting PAGE 3')
   doc.addPage()
   y = margin
 
@@ -569,7 +576,6 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 4: Your Personality Style Graphs (simplified)
-  console.log('PDF: Starting PAGE 4')
   doc.addPage()
   y = margin
 
@@ -631,7 +637,6 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 5: The [Style] Leader
-  console.log('PDF: Starting PAGE 5')
   doc.addPage()
   y = margin
 
@@ -728,7 +733,6 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 6-7: Your Profile in Depth (2 pages)
-  console.log('PDF: Starting PAGE 6')
   doc.addPage()
   y = margin
 
@@ -803,7 +807,6 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 7: Your Profile in Depth (continued)
-  console.log('PDF: Starting PAGE 7')
   doc.addPage()
   y = margin
 
@@ -878,7 +881,6 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 8: How to Communicate with Your Style
-  console.log('PDF: Starting PAGE 8')
   doc.addPage()
   y = margin
 
@@ -1561,7 +1563,6 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 16: Your Strengths in Your Style
-  console.log('PDF: Starting PAGE 16')
   doc.addPage()
   y = margin
 
@@ -2256,7 +2257,6 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 24: Your Assessment Scores
-  console.log('PDF: Starting PAGE 24')
   doc.addPage()
   y = margin
 
@@ -2844,7 +2844,6 @@ async function generateDiscPDF(respondent) {
   addFooter(pageNum++)
 
   // PAGE 31: Your Next Step
-  console.log('PDF: Starting PAGE 31')
   doc.addPage()
   y = margin
 
