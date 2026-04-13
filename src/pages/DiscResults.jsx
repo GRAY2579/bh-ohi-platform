@@ -315,11 +315,12 @@ async function generateDiscPDF(respondent) {
 
   function addSidebarQuote(quoteIndex) {
     if (!SIDEBAR_QUOTES || SIDEBAR_QUOTES.length === 0) return
-    const quote = SIDEBAR_QUOTES[quoteIndex % SIDEBAR_QUOTES.length]
+    const quoteArr = SIDEBAR_QUOTES[quoteIndex % SIDEBAR_QUOTES.length]
+    const quoteText = Array.isArray(quoteArr) ? `"${quoteArr[0]}" — ${quoteArr[1]}` : String(quoteArr)
     doc.setFont('helvetica', 'italic')
     doc.setFontSize(8)
     doc.setTextColor(180, 180, 180)
-    doc.text(quote, pageWidth - 5, pageHeight / 2, { align: 'right', maxWidth: 10 })
+    doc.text(quoteText, pageWidth - 5, pageHeight / 2, { align: 'right', maxWidth: 10 })
   }
 
   const comboProfile = COMBO_PROFILES && COMBO_PROFILES[`${respondent.primary_style}-${respondent.secondary_style}`]
@@ -2026,9 +2027,9 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const workStyleText18 = PROFILES[respondent.primary_style].work_style
+  const workStyleText18 = PROFILES[respondent.primary_style].work_style || ''
   const workStyleLines18 = doc.splitTextToSize(workStyleText18, contentWidth - 2)
-  workStyleLines.forEach((line) => {
+  workStyleLines18.forEach((line) => {
     doc.text(line, margin + 1, y)
     y += 4
   })
@@ -2044,7 +2045,7 @@ async function generateDiscPDF(respondent) {
   doc.setFontSize(8)
   doc.setTextColor(50, 50, 50)
   const knowWorkText18 = `In the workplace, your ${PROFILES[respondent.primary_style].name} style manifests as a consistent pattern of behavior that shapes how you approach tasks, interact with colleagues, and respond to challenges. Understanding this pattern is the first step toward leveraging it intentionally rather than simply reacting to situations. Your natural approach works well in environments that value the qualities of your style.`
-  const knowWorkLines = doc.splitTextToSize(knowWorkText, contentWidth - 2)
+  const knowWorkLines18 = doc.splitTextToSize(knowWorkText18, contentWidth - 2)
   knowWorkLines18.forEach((line) => {
     doc.text(line, margin + 1, y)
     y += 3
@@ -2061,8 +2062,8 @@ async function generateDiscPDF(respondent) {
   doc.setFontSize(8)
   doc.setTextColor(50, 50, 50)
   const growWorkText18 = `Professional growth for the ${PROFILES[respondent.primary_style].name} style means developing capabilities that complement your natural strengths without trying to become someone you are not. Focus on building skills in areas where your style has natural blind spots. Seek feedback from colleagues with different styles — they see things you miss. Create accountability structures that help you stay focused on growth areas even when your natural tendencies pull you back to your comfort zone.`
-  const growWorkLines = doc.splitTextToSize(growWorkText, contentWidth - 2)
-  growWorkLines.forEach((line) => {
+  const growWorkLines18 = doc.splitTextToSize(growWorkText18, contentWidth - 2)
+  growWorkLines18.forEach((line) => {
     doc.text(line, margin + 1, y)
     y += 3
   })
@@ -2278,7 +2279,7 @@ async function generateDiscPDF(respondent) {
   y += 4
 
   const stylesWithTips20 = WORKPLACE_TIPS[respondent.primary_style] || []
-  const tips = stylesWithTips.slice(0, 5).map((tip, idx) => ({
+  const tips = stylesWithTips20.slice(0, 5).map((tip, idx) => ({
     num: (idx + 1).toString(),
     trait: tip[0],
     how: tip[1],
