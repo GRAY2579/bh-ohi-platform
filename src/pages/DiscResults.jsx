@@ -533,11 +533,16 @@ async function generateDiscPDF(respondent) {
   const tableData = [
     { label: 'Pace', D: 'FAST', I: 'FAST', S: 'STEADY', C: 'CAREFUL' },
     { label: 'Focus', D: 'RESULTS', I: 'PEOPLE', S: 'HARMONY', C: 'ACCURACY' },
+    { label: 'Approach', D: 'Direct', I: 'Engaging', S: 'Supportive', C: 'Analytical' },
     { label: 'Orientation', D: 'TASK', I: 'PEOPLE', S: 'PEOPLE', C: 'TASK' },
     { label: 'Core Strength', D: 'Decisiveness', I: 'Inspiration', S: 'Reliability', C: 'Quality' },
+    { label: 'Core Need', D: 'Control', I: 'Recognition', S: 'Stability', C: 'Accuracy' },
     { label: 'Under Stress', D: 'Demanding', I: 'Disorganized', S: 'Passive', C: 'Withdrawn' },
+    { label: 'Fears', D: 'Loss of control', I: 'Rejection', S: 'Sudden change', C: 'Being wrong' },
+    { label: 'Communication', D: 'Direct', I: 'Warm', S: 'Patient', C: 'Precise' },
     { label: 'Motivated By', D: 'Results', I: 'Approval', S: 'Stability', C: 'Accuracy' },
     { label: 'Decision Style', D: 'Fast', I: 'Quick', S: 'Deliberate', C: 'Analytical' },
+    { label: 'Blind Spot', D: 'Harsh', I: 'Scattered', S: 'Passive', C: 'Critical' },
     { label: 'Ideal Role', D: 'Leader', I: 'Motivator', S: 'Supporter', C: 'Analyst' },
     { label: 'Time Focus', D: 'NOW', I: 'FUTURE', S: 'PRESENT', C: 'PAST' },
   ]
@@ -571,11 +576,22 @@ async function generateDiscPDF(respondent) {
   doc.setFontSize(7)
   doc.setTextColor(50, 50, 50)
   doc.text('This table is your quick-reference guide. When you encounter colleagues whose behavior puzzles you, return to this page.', margin + 2, y + 5)
+  y += 12
+
+  doc.setFillColor(200, 240, 200)
+  doc.rect(margin, y, contentWidth, 8, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8)
+  doc.setTextColor(50, 100, 50)
+  doc.text('Reflection', margin + 2, y + 2)
+  doc.setFont('helvetica', 'italic')
+  doc.setFontSize(7)
+  doc.text('Which of these four styles feels most familiar to you? Which one feels most foreign?', margin + 2, y + 5)
 
   addSidebarQuote(0)
   addFooter(pageNum++)
 
-  // PAGE 4: Your Personality Style Graphs (simplified)
+  // PAGE 4: Your Personality Style Graphs
   doc.addPage()
   y = margin
 
@@ -592,30 +608,134 @@ async function generateDiscPDF(respondent) {
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
   doc.text('Your BH-DISC assessment produces three distinct graphs — the 3 Cs:', margin, y)
-  y += 8
+  y += 7
 
-  const graphExplain = [
-    { title: 'Graph 1 – Core', desc: 'Your default behavioral wiring — who you are naturally.' },
-    { title: 'Graph 2 – Context', desc: 'How you adapt your behavior in your work environment.' },
-    { title: 'Graph 3 – Conflict', desc: 'How you respond under stress or pressure.' }
-  ]
+  // Helper function to draw a line graph
+  function drawLineGraph(startX, startY, width, height, data, graphTitle) {
+    const graphPadding = 8
+    const graphWidth = width - graphPadding * 2
+    const graphHeight = height - graphPadding * 2
+    const baseline = startY + height - graphPadding
+    const leftEdge = startX + graphPadding
 
-  graphExplain.forEach((box, i) => {
-    doc.setFillColor(i === 0 ? 19 : i === 1 ? 146 : 200, i === 0 ? 27 : i === 1 ? 192 : 150, i === 0 ? 85 : i === 1 ? 233 : 12)
-    doc.rect(margin, y + i * 20, contentWidth, 4, 'F')
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(9)
-    doc.setTextColor(255, 255, 255)
-    doc.text(box.title, margin + 2, y + i * 20 + 2.5)
-    doc.setFillColor(250, 250, 250)
-    doc.rect(margin, y + i * 20 + 4, contentWidth, 14, 'F')
+    // Draw axes
+    doc.setDrawColor(100, 100, 100)
+    doc.setLineWidth(0.5)
+    doc.line(leftEdge - 2, baseline, leftEdge + graphWidth + 2, baseline) // X axis
+    doc.line(leftEdge, startY, leftEdge, baseline) // Y axis
+
+    // Draw midline at 50
+    doc.setDrawColor(220, 220, 220)
+    doc.setLineWidth(0.3)
+    const midlineY = baseline - (graphHeight / 2)
+    doc.line(leftEdge, midlineY, leftEdge + graphWidth, midlineY)
+
+    // Draw scale labels on Y axis
     doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(100, 100, 100)
+    doc.text('100', leftEdge - 6, startY + 1)
+    doc.text('50', leftEdge - 6, midlineY + 1)
+    doc.text('0', leftEdge - 6, baseline + 1)
+
+    // Plot points and draw line
+    const styles = ['D', 'I', 'S', 'C']
+    const styleColors = {
+      D: [192, 57, 43],
+      I: [243, 156, 18],
+      S: [39, 174, 96],
+      C: [41, 128, 185]
+    }
+
+    doc.setLineWidth(1)
+    let firstPoint = true
+    styles.forEach((style, idx) => {
+      const score = data[style] || 0
+      const xPos = leftEdge + (graphWidth / 3.5) * idx
+      const yPos = baseline - (score / 100) * graphHeight
+
+      // Draw connecting line
+      if (!firstPoint) {
+        const prevStyle = styles[idx - 1]
+        const prevScore = data[prevStyle] || 0
+        const prevXPos = leftEdge + (graphWidth / 3.5) * (idx - 1)
+        const prevYPos = baseline - (prevScore / 100) * graphHeight
+        doc.setDrawColor(...styleColors[prevStyle])
+        doc.line(prevXPos, prevYPos, xPos, yPos)
+      }
+      firstPoint = false
+
+      // Draw point
+      doc.setFillColor(...styleColors[style])
+      doc.circle(xPos, yPos, 1.5, 'F')
+
+      // Draw label
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(7)
+      doc.setTextColor(...styleColors[style])
+      doc.text(style, xPos - 1.5, baseline + 4)
+      doc.setFontSize(6)
+      doc.text(Math.round(score), xPos - 1.5, baseline + 7)
+    })
+
+    // Draw title
+    doc.setFont('helvetica', 'bold')
     doc.setFontSize(8)
+    doc.setTextColor(...COLORS.NAVY)
+    doc.text(graphTitle, startX + width / 2, startY - 2, { align: 'center' })
+  }
+
+  // Draw three graphs side by side
+  const graphWidth = (contentWidth - 4) / 3
+  const graphHeight = 28
+
+  const coreData = respondent.scores?.core || { D: 85, I: 65, S: 55, C: 45 }
+  const contextData = respondent.scores?.context || { D: 82, I: 68, S: 58, C: 48 }
+  const conflictData = respondent.scores?.conflict || { D: 90, I: 60, S: 50, C: 42 }
+
+  drawLineGraph(margin, y, graphWidth, graphHeight, coreData, 'Core')
+  drawLineGraph(margin + graphWidth + 2, y, graphWidth, graphHeight, contextData, 'Context')
+  drawLineGraph(margin + (graphWidth + 2) * 2, y, graphWidth, graphHeight, conflictData, 'Conflict')
+
+  y += graphHeight + 6
+
+  // Score summary table
+  const scoreColWidth = contentWidth / 5
+  doc.setFillColor(...COLORS.NAVY)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7)
+  doc.setTextColor(255, 255, 255)
+  const scoreHeaders = ['Dimension', 'Core', 'Context', 'Conflict', '']
+  scoreHeaders.forEach((header, i) => {
+    doc.rect(margin + i * scoreColWidth, y, scoreColWidth, 4, 'F')
+    doc.text(header, margin + i * scoreColWidth + 1, y + 2.5)
+  })
+  y += 4
+
+  const scoreRows = ['D', 'I', 'S', 'C'].map(dim => ({
+    label: dim,
+    core: Math.round(coreData[dim]),
+    context: Math.round(contextData[dim]),
+    conflict: Math.round(conflictData[dim])
+  }))
+
+  scoreRows.forEach((row, idx) => {
+    doc.setFillColor(idx % 2 === 0 ? 255 : 249, idx % 2 === 0 ? 255 : 249, idx % 2 === 0 ? 255 : 249)
+    doc.rect(margin, y, contentWidth, 4, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6)
+    doc.setTextColor(...COLORS.NAVY)
+    doc.text(row.label, margin + 1, y + 2.5)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(6)
     doc.setTextColor(50, 50, 50)
-    doc.text(box.desc, margin + 2, y + i * 20 + 8)
+    doc.text(String(row.core), margin + scoreColWidth + 1, y + 2.5)
+    doc.text(String(row.context), margin + scoreColWidth * 2 + 1, y + 2.5)
+    doc.text(String(row.conflict), margin + scoreColWidth * 3 + 1, y + 2.5)
+    y += 4
   })
 
-  y += 66
+  y += 3
 
   doc.setFillColor(230, 240, 250)
   doc.rect(margin, y, contentWidth, 12, 'FD')
@@ -627,7 +747,7 @@ async function generateDiscPDF(respondent) {
   doc.setFontSize(8)
   doc.setTextColor(50, 50, 50)
   const readGraphs = doc.splitTextToSize(
-    'The midline at 50 is the key reference point. Scores above indicate stronger traits. Large differences between Core and Context suggest behavioral adaptation. Your pattern shows strong behavioral consistency.',
+    'The midline at 50 is the key reference point. Scores above indicate stronger traits. Large differences between Core and Context suggest behavioral adaptation.',
     contentWidth - 4
   )
   readGraphs.forEach((line, i) => {
@@ -650,9 +770,8 @@ async function generateDiscPDF(respondent) {
   doc.line(margin, y, margin + 80, y)
   y += 8
 
-  const profileText = PROFILES && PROFILES[respondent.primary_style]
-    ? PROFILES[respondent.primary_style].narrative
-    : 'You are a results-focused leader who drives action and achievement.'
+  const profile = PROFILES && PROFILES[respondent.primary_style] ? PROFILES[respondent.primary_style] : null
+  const profileText = profile?.narrative || 'You are a results-focused leader who drives action and achievement.'
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
@@ -673,7 +792,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const commText = 'Direct and action-oriented. You lead with conclusions and expect others to keep up. You value brevity and decisiveness.'
+  const commText = profile?.communication || 'Direct and action-oriented. You lead with conclusions and expect others to keep up. You value brevity and decisiveness.'
   const commLines = doc.splitTextToSize(commText, contentWidth - 2)
   commLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -690,7 +809,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const strengthText = 'You make tough decisions when others hesitate. You drive toward results with focus and intensity. You inspire others through your confidence and decisiveness.'
+  const strengthText = profile?.strengths || 'You make tough decisions when others hesitate. You drive toward results with focus and intensity. You inspire others through your confidence and decisiveness.'
   const strengthLines = doc.splitTextToSize(strengthText, contentWidth - 2)
   strengthLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -707,7 +826,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const challText = 'Your directness can feel harsh to those who process more slowly. You may run over people in your rush to move forward.'
+  const challText = profile?.risk || 'Your directness can feel harsh to those who process more slowly. You may run over people in your rush to move forward.'
   const challLines = doc.splitTextToSize(challText, contentWidth - 2)
   challLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -726,8 +845,49 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(50, 50, 50)
-  doc.text('Motivation: Results, winning, autonomy, recognition.', margin + 2, y + 6)
-  doc.text('You want clear goals and freedom to achieve them.', margin + 2, y + 10)
+  const coreDriveText = 'Motivation: ' + (profile?.motivation || 'Results, winning, autonomy, recognition.')
+  const coreDriveLines = doc.splitTextToSize(coreDriveText, contentWidth - 4)
+  coreDriveLines.slice(0, 3).forEach((line, i) => {
+    doc.text(line, margin + 2, y + 5 + i * 3)
+  })
+  y += 4 + coreDriveLines.slice(0, 3).length * 3 + 4
+
+  // Two side-by-side boxes at bottom
+  const sideBoxWidth = (contentWidth - 2) / 2
+
+  // What Others Experience box
+  doc.setFillColor(240, 240, 240)
+  doc.setDrawColor(200, 150, 12)
+  doc.rect(margin, y, sideBoxWidth, 24, 'FD')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(...COLORS.NAVY)
+  doc.text('What Others Experience', margin + 2, y + 2)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7)
+  doc.setTextColor(50, 50, 50)
+  const othersText = profile?.colleague_experience || 'Colleagues see you as decisive, direct, and driven.'
+  const othersLines = doc.splitTextToSize(othersText, sideBoxWidth - 4)
+  othersLines.slice(0, 5).forEach((line, i) => {
+    doc.text(line, margin + 2, y + 5 + i * 2.5)
+  })
+
+  // Ideal Environment box
+  doc.setFillColor(240, 240, 240)
+  doc.setDrawColor(200, 150, 12)
+  doc.rect(margin + sideBoxWidth + 2, y, sideBoxWidth, 24, 'FD')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(...COLORS.NAVY)
+  doc.text('Your Ideal Environment', margin + sideBoxWidth + 4, y + 2)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7)
+  doc.setTextColor(50, 50, 50)
+  const idealEnvText = profile?.ideal_environment || 'Fast-paced, results-oriented settings where autonomy is high and bureaucracy is low.'
+  const idealEnvLines = doc.splitTextToSize(idealEnvText, sideBoxWidth - 4)
+  idealEnvLines.slice(0, 5).forEach((line, i) => {
+    doc.text(line, margin + sideBoxWidth + 4, y + 5 + i * 2.5)
+  })
 
   addSidebarQuote(1)
   addFooter(pageNum++)
@@ -753,7 +913,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const genCharText = 'As a Dominant individual, you are naturally driven to control your environment and achieve measurable results. You are bottom-line oriented and prefer substance over small talk. You move quickly, make decisions with confidence, and expect others to do the same.'
+  const genCharText = profile?.general_characteristics || 'As a Dominant individual, you are naturally driven to control your environment and achieve measurable results. You are bottom-line oriented and prefer substance over small talk. You move quickly, make decisions with confidence, and expect others to do the same.'
   const genCharLines = doc.splitTextToSize(genCharText, contentWidth - 2)
   genCharLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -763,14 +923,17 @@ async function generateDiscPDF(respondent) {
 
   // Callout boxes
   const calloutBoxes = [
-    { title: 'Motivated By', color: COLORS.CAMEL, text: 'Results, recognition, autonomy, clear objectives.' },
-    { title: 'Ideal Environment', color: COLORS.I, text: 'Action-valued, results-driven, autonomy high, bureaucracy low.' },
-    { title: 'Greatest Fear', color: COLORS.D, text: 'Loss of control or being taken advantage of.' },
-    { title: 'Under Pressure', color: COLORS.C, text: 'You become more demanding and impatient.' },
+    { title: 'Motivated By', color: COLORS.CAMEL, text: profile?.motivated_by || 'Results, recognition, autonomy, clear objectives.' },
+    { title: 'Ideal Environment', color: COLORS.I, text: profile?.ideal_environment || 'Action-valued, results-driven, autonomy high, bureaucracy low.' },
+    { title: 'Greatest Fear', color: COLORS.D, text: profile?.greatest_fear || 'Loss of control or being taken advantage of.' },
+    { title: 'Under Pressure', color: COLORS.C, text: profile?.under_pressure || 'You become more demanding and impatient.' },
   ]
 
   calloutBoxes.forEach((box, i) => {
-    if (y > pageHeight - margin - 25) {
+    const boxText = doc.splitTextToSize(box.text, contentWidth - 4)
+    const boxBodyHeight = boxText.length * 3 + 4
+    if (y + 4 + boxBodyHeight > pageHeight - margin - 15) {
+      addFooter(pageNum++)
       doc.addPage()
       y = margin
     }
@@ -784,12 +947,11 @@ async function generateDiscPDF(respondent) {
     doc.setTextColor(50, 50, 50)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
-    doc.rect(margin, y + 4, contentWidth, 10, 'F')
-    const boxText = doc.splitTextToSize(box.text, contentWidth - 4)
+    doc.rect(margin, y + 4, contentWidth, boxBodyHeight, 'F')
     boxText.forEach((line, j) => {
-      doc.text(line, margin + 2, y + 6 + j * 3)
+      doc.text(line, margin + 2, y + 7 + j * 3)
     })
-    y += 15
+    y += 4 + boxBodyHeight + 2
   })
 
   y += 2
@@ -827,7 +989,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const blindText = 'Your directness can come across as harsh to relationship-focused styles. You may dismiss people who process information differently as slow or incompetent. Your competitive nature can turn collaboration into competition.'
+  const blindText = profile?.blind_spots || 'Your directness can come across as harsh to relationship-focused styles. You may dismiss people who process information differently as slow or incompetent. Your competitive nature can turn collaboration into competition.'
   const blindLines = doc.splitTextToSize(blindText, contentWidth - 2)
   blindLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -836,29 +998,39 @@ async function generateDiscPDF(respondent) {
   y += 4
 
   // Value to Team box
+  const valueText = profile?.value_to_team || 'You bring clarity, decisiveness, and momentum. You move teams forward and drive change.'
+  const valueLines = doc.splitTextToSize(valueText, contentWidth - 4)
+  const valueBoxH = valueLines.length * 3 + 6
   doc.setFillColor(210, 240, 210)
-  doc.rect(margin, y, contentWidth, 12, 'FD')
+  doc.rect(margin, y, contentWidth, valueBoxH, 'FD')
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
   doc.setTextColor(50, 100, 50)
-  doc.text('Value to Your Team', margin + 2, y + 2)
+  doc.text('Value to Your Team', margin + 2, y + 3)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(50, 50, 50)
-  doc.text('You bring clarity, decisiveness, and momentum. You move teams forward and drive change.', margin + 2, y + 6)
-  y += 14
+  valueLines.forEach((line, i) => {
+    doc.text(line, margin + 2, y + 6 + i * 3)
+  })
+  y += valueBoxH + 2
 
   // Personal Growth Areas box
+  const growthText = profile?.growth_areas || 'Practice asking for input before deciding. Develop patience with slower processors.'
+  const growthLines = doc.splitTextToSize(growthText, contentWidth - 4)
+  const growthBoxH = growthLines.length * 3 + 6
   doc.setFillColor(240, 220, 210)
-  doc.rect(margin, y, contentWidth, 12, 'FD')
+  doc.rect(margin, y, contentWidth, growthBoxH, 'FD')
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
   doc.setTextColor(139, 69, 19)
-  doc.text('Personal Growth Areas', margin + 2, y + 2)
+  doc.text('Personal Growth Areas', margin + 2, y + 3)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(50, 50, 50)
-  doc.text('Practice asking for input before deciding. Develop patience with slower processors.', margin + 2, y + 6)
+  growthLines.forEach((line, i) => {
+    doc.text(line, margin + 2, y + 5 + i * 3)
+  })
   y += 14
 
   // Know Yourself
@@ -870,9 +1042,26 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(50, 50, 50)
-  const knowText = 'Your strength is your ability to cut through complexity and drive action. However, be aware your direct style can feel harsh to those who need more relational warmth.'
+  const knowText = profile?.know_yourself || 'Your strength is your ability to cut through complexity and drive action. However, be aware your direct style can feel harsh to those who need more relational warmth.'
   const knowLines = doc.splitTextToSize(knowText, contentWidth - 2)
   knowLines.forEach((line) => {
+    doc.text(line, margin + 1, y)
+    y += 3.5
+  })
+  y += 3
+
+  // Grow Yourself
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(...COLORS.NAVY)
+  doc.text('Grow Yourself', margin, y)
+  y += 4
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(50, 50, 50)
+  const growYourselfText = profile?.grow_yourself || 'Growth for you comes from slowing down enough to bring people with you.'
+  const growYourselfLines = doc.splitTextToSize(growYourselfText, contentWidth - 2)
+  growYourselfLines.forEach((line) => {
     doc.text(line, margin + 1, y)
     y += 3.5
   })
@@ -1242,8 +1431,9 @@ async function generateDiscPDF(respondent) {
   y += 3
 
   // Communication Snapshot box
+  const commSnap = COMM_SNAPSHOT && COMM_SNAPSHOT[respondent.primary_style] ? COMM_SNAPSHOT[respondent.primary_style] : {}
   const commSnapColWidth = contentWidth / 2
-  doc.setFillColor(...COLORS.D)
+  doc.setFillColor(...COLORS[respondent.primary_style])
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
   doc.setTextColor(255, 255, 255)
@@ -1252,11 +1442,11 @@ async function generateDiscPDF(respondent) {
 
   doc.setFillColor(250, 250, 250)
   const snapRows = [
-    { label: 'Pace', value: 'Fast and urgent' },
-    { label: 'Tone', value: 'Direct and commanding' },
-    { label: 'Focus', value: 'Results and action' },
-    { label: 'Listens for', value: 'The bottom line' },
-    { label: 'Frustrated by', value: 'Indecision and small talk' },
+    { label: 'Pace', value: commSnap.pace || 'Fast and urgent' },
+    { label: 'Tone', value: commSnap.tone || 'Direct and commanding' },
+    { label: 'Focus', value: commSnap.focus || 'Results and action' },
+    { label: 'Listens for', value: commSnap.listens_for || 'The bottom line' },
+    { label: 'Frustrated by', value: commSnap.frustrated_by || 'Indecision and small talk' },
   ]
 
   snapRows.forEach((row, idx) => {
@@ -1268,10 +1458,49 @@ async function generateDiscPDF(respondent) {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.5)
     doc.setTextColor(50, 50, 50)
-    doc.text(row.value, margin + commSnapColWidth + 20, y - 6 + idx * 4)
+    const valueLines = doc.splitTextToSize(row.value, commSnapColWidth - 22)
+    doc.text(valueLines[0], margin + commSnapColWidth + 20, y - 6 + idx * 4)
   })
 
   y += 8
+
+  // Energizes & Drains section
+  const energizesDrains = ENERGIZES_DRAINS && ENERGIZES_DRAINS[respondent.primary_style] ? ENERGIZES_DRAINS[respondent.primary_style] : {}
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(...COLORS.NAVY)
+  doc.text('What Energizes & Drains You', margin, y)
+  y += 6
+
+  const energizeDrainColWidth = contentWidth / 2
+  doc.setFillColor(...COLORS[respondent.primary_style])
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8)
+  doc.setTextColor(255, 255, 255)
+  doc.rect(margin, y, energizeDrainColWidth, 4, 'F')
+  doc.text('ENERGIZES YOU', margin + 2, y + 2)
+  doc.rect(margin + energizeDrainColWidth, y, energizeDrainColWidth, 4, 'F')
+  doc.text('DRAINS YOU', margin + energizeDrainColWidth + 2, y + 2)
+  y += 4
+
+  const maxEnergizeItems = Math.max((energizesDrains.energizes || []).length, (energizesDrains.drains || []).length)
+  for (let i = 0; i < maxEnergizeItems; i++) {
+    doc.setFillColor(i % 2 === 0 ? 255 : 249, i % 2 === 0 ? 255 : 249, i % 2 === 0 ? 255 : 249)
+    doc.rect(margin, y, energizeDrainColWidth, 4, 'F')
+    doc.rect(margin + energizeDrainColWidth, y, energizeDrainColWidth, 4, 'F')
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(50, 50, 50)
+    if (energizesDrains.energizes && i < energizesDrains.energizes.length) {
+      doc.text(energizesDrains.energizes[i], margin + 2, y + 2.5)
+    }
+    if (energizesDrains.drains && i < energizesDrains.drains.length) {
+      doc.text(energizesDrains.drains[i], margin + energizeDrainColWidth + 2, y + 2.5)
+    }
+    y += 4
+  }
+
+  y += 3
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
@@ -1281,7 +1510,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const showUpText = 'You naturally communicate with authority and confidence. Your words carry weight because you sound certain of what you are saying. You use language that is forceful and commanding. You ask pointed questions and expect clear answers. You do not help clarify your statements unnecessarily.'
+  const showUpText = profile?.natural_communication || 'You naturally communicate with authority and confidence. Your words carry weight because you sound certain of what you are saying. You use language that is forceful and commanding.'
   const showUpLines = doc.splitTextToSize(showUpText, contentWidth - 2)
   showUpLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -1307,7 +1536,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const compatIntro = 'As a Dominant individual, you have natural affinities with some styles and potential friction with others. Understanding these dynamics is one of the most practical applications of the DISC model — it helps you anticipate misunderstandings before they happen and adapt your approach to build stronger, more productive relationships.'
+  const compatIntro = profile ? `As a ${profile.name} individual, you have natural affinities with some styles and potential friction with others. Understanding these dynamics is one of the most practical applications of the DISC model — it helps you anticipate misunderstandings before they happen and adapt your approach to build stronger, more productive relationships.` : 'As a leader, you have natural affinities with some styles and potential friction with others. Understanding these dynamics is one of the most practical applications of the DISC model — it helps you anticipate misunderstandings before they happen and adapt your approach to build stronger, more productive relationships.'
   const compatLines = doc.splitTextToSize(compatIntro, contentWidth - 2)
   compatLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -1316,6 +1545,7 @@ async function generateDiscPDF(respondent) {
   y += 4
 
   // Influencing (I) Section
+  const styleInteractions = STYLE_INTERACTIONS && STYLE_INTERACTIONS[respondent.primary_style] ? STYLE_INTERACTIONS[respondent.primary_style] : {}
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
   doc.setTextColor(...COLORS.I)
@@ -1324,7 +1554,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const iText = 'You and the Influencing personality share boldness and a preference for fast action. You focus on results; they focus on people. The Influencing person may feel you run over people in your rush to produce. You may feel they waste time socializing when deadlines need to be met. The truth is you need each other desperately. Acknowledge their ability to build enthusiasm and bring people along willingly.'
+  const iText = styleInteractions.with_i || 'You and the Influencing personality share boldness and a preference for fast action. You focus on results; they focus on people.'
   const iLines = doc.splitTextToSize(iText, contentWidth - 2)
   iLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -1365,7 +1595,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const sText = 'You and the Steady personality are natural opposites in many ways. You move fast; they move deliberately. You embrace change; they resist it. This creates friction, but also powerful balance when managed well. You are the catalyst for change; they are the anchor that keeps things stable. Explain your decisions and the reasoning behind them. Check in personally and show that you value the relationship, not just the output.'
+  const sText = styleInteractions.with_s || 'You and the Steady personality are natural opposites in many ways. You move fast; they move deliberately. You embrace change; they resist it.'
   const sLines = doc.splitTextToSize(sText, contentWidth - 2)
   sLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -1418,7 +1648,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const cText = 'You and the Compliant personality can frustrate each other profoundly. You think they are too slow and too focused on details; they think you are reckless and too dismissive of important information. Both perspectives are partially right. Their thoroughness prevents costly mistakes that your speed would create. Your decisiveness turns their analysis into action that would otherwise remain on paper. Respect their need for data and expertise. Set clear deadlines and hold them.'
+  const cText = styleInteractions.with_c || 'You and the Compliant personality can frustrate each other profoundly. You think they are too slow and too focused on details; they think you are reckless and too dismissive of important information.'
   const cLines = doc.splitTextToSize(cText, contentWidth - 2)
   cLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -1583,7 +1813,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const knowYourselfText = 'Your strength is your ability to cut through complexity and drive action. You see what needs to happen and you make it happen. Your directness creates clarity. Your decisiveness creates momentum. Your confidence creates trust.'
+  const knowYourselfText = PROFILES[respondent.primary_style].know_yourself
   const knowYourselfLines = doc.splitTextToSize(knowYourselfText, contentWidth - 2)
   knowYourselfLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -1593,12 +1823,10 @@ async function generateDiscPDF(respondent) {
 
   // 2x2 grid of strength cards
   const strengthCardWidth = (contentWidth - 2) / 2
-  const strengthCards = [
-    { title: 'DECISIVENESS', desc: 'You cut through ambiguity and commit when others hesitate' },
-    { title: 'DRIVE', desc: 'You maintain intensity and momentum toward the finish line' },
-    { title: 'DIRECTNESS', desc: 'You communicate with clarity that eliminates guesswork' },
-    { title: 'ACCOUNTABILITY', desc: 'You own outcomes and hold others to the same standard' },
-  ]
+  const strengthCards = STRENGTH_CARDS[respondent.primary_style].map(([title, desc]) => ({
+    title,
+    desc,
+  }))
 
   strengthCards.forEach((card, idx) => {
     const col = idx % 2
@@ -1638,11 +1866,28 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const growYourselfText = 'Growth for you comes from slowing down enough to bring people with you. Your drive to move forward is immensely valuable, but people matter — and their engagement determines whether your results are sustainable or temporary.'
-  const growYourselfLines = doc.splitTextToSize(growYourselfText, contentWidth - 2)
-  growYourselfLines.forEach((line) => {
+  const growYourselfText16 = PROFILES[respondent.primary_style].grow_yourself
+  const growYourselfLines16 = doc.splitTextToSize(growYourselfText16, contentWidth - 2)
+  growYourselfLines16.forEach((line) => {
     doc.text(line, margin + 1, y)
     y += 4
+  })
+
+  // Value to Your Organization callout
+  y += 4
+  doc.setFillColor(210, 240, 250)
+  doc.rect(margin, y, contentWidth, 12, 'FD')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(...COLORS.NAVY)
+  doc.text('Value to Your Organization', margin + 2, y + 2)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(50, 50, 50)
+  const valueText16 = PROFILES[respondent.primary_style].value_to_team
+  const valueLines16 = doc.splitTextToSize(valueText16, contentWidth - 4)
+  valueLines16.forEach((line, i) => {
+    doc.text(line, margin + 2, y + 5 + i * 3)
   })
 
   addFooter(pageNum++)
@@ -1663,7 +1908,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const leaderIntro = 'As a Dominant individual, you bring unique leadership capabilities to any team or organization. The chart below shows your BH-DISC Leadership Profile across seven key leadership dimensions.'
+  const leaderIntro = `As a ${PROFILES[respondent.primary_style].name} individual, you bring unique leadership capabilities to any team or organization. The chart below shows your BH-DISC Leadership Profile across seven key leadership dimensions.`
   const leaderLines = doc.splitTextToSize(leaderIntro, contentWidth - 2)
   leaderLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -1672,14 +1917,15 @@ async function generateDiscPDF(respondent) {
   y += 6
 
   // Leadership bar chart (horizontal)
+  const leadershipScores = LEADERSHIP_SCORES[respondent.primary_style]
   const leadershipDimensions = [
-    { label: 'Directing', score: 95 },
-    { label: 'Persisting', score: 88 },
-    { label: 'Influencing', score: 82 },
-    { label: 'Creating', score: 68 },
-    { label: 'Processing', score: 55 },
-    { label: 'Relating', score: 45 },
-    { label: 'Detailing', score: 40 },
+    { label: 'Directing', score: leadershipScores.Directing },
+    { label: 'Persisting', score: leadershipScores.Persisting },
+    { label: 'Influencing', score: leadershipScores.Influencing },
+    { label: 'Creating', score: leadershipScores.Creating },
+    { label: 'Processing', score: leadershipScores.Processing },
+    { label: 'Relating', score: leadershipScores.Relating },
+    { label: 'Detailing', score: leadershipScores.Detailing },
   ]
 
   const barChartWidth = contentWidth * 0.6
@@ -1722,11 +1968,27 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const topLeaders = [
-    { num: '1', dim: 'Directing (Score: 95)', desc: 'Your ability to set clear direction and drive execution. You establish expectations, assign accountability, and keep teams focused on outcomes.' },
-    { num: '2', dim: 'Persisting (Score: 88)', desc: 'Your capacity to maintain momentum through obstacles. You do not abandon goals when resistance appears — you push through with sustained intensity.' },
-    { num: '3', dim: 'Influencing (Score: 82)', desc: 'Your power to shape decisions and motivate action. You move people toward a shared objective through conviction, energy, and personal credibility.' },
-  ]
+  // Get top 3 leadership dimensions
+  const sortedDims = Object.entries(leadershipScores)
+    .map(([name, score]) => ({ name, score }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+  
+  const leadershipDescriptions = {
+    Directing: 'Your ability to set clear direction and drive execution. You establish expectations, assign accountability, and keep teams focused on outcomes.',
+    Persisting: 'Your capacity to maintain momentum through obstacles. You do not abandon goals when resistance appears — you push through with sustained intensity.',
+    Influencing: 'Your power to shape decisions and motivate action. You move people toward a shared objective through conviction, energy, and personal credibility.',
+    Creating: 'Your capacity to envision new possibilities and innovative solutions. You inspire teams to think beyond conventional approaches and embrace change.',
+    Processing: 'Your ability to think systematically and analyze information deeply. You ensure decisions are well-founded and risks are properly assessed.',
+    Relating: 'Your capacity to build genuine connections and foster team cohesion. You create psychological safety and encourage collaboration.',
+    Detailing: 'Your precision and attention to quality standards. You ensure nothing important is overlooked and excellence is maintained.',
+  }
+  
+  const topLeaders = sortedDims.map((dim, idx) => ({
+    num: (idx + 1).toString(),
+    dim: `${dim.name} (Score: ${dim.score})`,
+    desc: leadershipDescriptions[dim.name],
+  }))
 
   topLeaders.forEach((leader) => {
     doc.setFont('helvetica', 'bold')
@@ -1764,8 +2026,8 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const workStyleText = 'At work, you are action-oriented and goal-driven. You focus on the bottom line and push yourself and others to deliver measurable results. You do not get bogged down in process, procedure, or politics. You see obstacles as challenges to overcome, not reasons to slow down. You are comfortable with risk and change when it moves you toward your goal. You prefer to lead rather than follow, and you are not bound by the way things have always been done. You challenge the status quo and drive change.'
-  const workStyleLines = doc.splitTextToSize(workStyleText, contentWidth - 2)
+  const workStyleText18 = PROFILES[respondent.primary_style].work_style
+  const workStyleLines18 = doc.splitTextToSize(workStyleText18, contentWidth - 2)
   workStyleLines.forEach((line) => {
     doc.text(line, margin + 1, y)
     y += 4
@@ -1781,9 +2043,9 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(50, 50, 50)
-  const knowWorkText = 'In the workplace, your Dominant style manifests as a consistent pattern of behavior that shapes how you approach tasks, interact with colleagues, and respond to challenges. Understanding this pattern is the first step toward leveraging it intentionally rather than simply reacting to situations. Your natural approach works well in environments that value decisive and direct behavior.'
+  const knowWorkText18 = `In the workplace, your ${PROFILES[respondent.primary_style].name} style manifests as a consistent pattern of behavior that shapes how you approach tasks, interact with colleagues, and respond to challenges. Understanding this pattern is the first step toward leveraging it intentionally rather than simply reacting to situations. Your natural approach works well in environments that value the qualities of your style.`
   const knowWorkLines = doc.splitTextToSize(knowWorkText, contentWidth - 2)
-  knowWorkLines.forEach((line) => {
+  knowWorkLines18.forEach((line) => {
     doc.text(line, margin + 1, y)
     y += 3
   })
@@ -1798,7 +2060,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(50, 50, 50)
-  const growWorkText = 'Professional growth for the Dominant style means developing capabilities that complement your natural strengths without trying to become someone you are not. Focus on building skills in areas where your style has natural blind spots. Seek feedback from colleagues with different styles — they see things you miss. Create accountability structures that help you stay focused on growth areas even when your natural tendencies pull you back to your comfort zone.'
+  const growWorkText18 = `Professional growth for the ${PROFILES[respondent.primary_style].name} style means developing capabilities that complement your natural strengths without trying to become someone you are not. Focus on building skills in areas where your style has natural blind spots. Seek feedback from colleagues with different styles — they see things you miss. Create accountability structures that help you stay focused on growth areas even when your natural tendencies pull you back to your comfort zone.`
   const growWorkLines = doc.splitTextToSize(growWorkText, contentWidth - 2)
   growWorkLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -1832,12 +2094,13 @@ async function generateDiscPDF(respondent) {
   doc.text('Your Natural Pattern', margin + behavColWidth + 1, y + 2.5)
   y += 4
 
+  const workBehaviorsData = WORK_BEHAVIOR[respondent.primary_style]
   const workBehaviors = [
-    { behavior: 'Meeting Style', pattern: 'Short, agenda-driven, decision-focused' },
-    { behavior: 'Decision Making', pattern: 'Fast — trusts instinct, revisits if needed' },
-    { behavior: 'Feedback Preference', pattern: 'Direct and immediate — no sugarcoating' },
-    { behavior: 'Conflict Approach', pattern: 'Head-on — addresses issues quickly and moves on' },
-    { behavior: 'Under Deadline', pattern: 'Thrives — increases focus and output' },
+    { behavior: 'Meeting Style', pattern: workBehaviorsData.meeting_style },
+    { behavior: 'Decision Making', pattern: workBehaviorsData.decision_making },
+    { behavior: 'Feedback Preference', pattern: workBehaviorsData.feedback_pref },
+    { behavior: 'Conflict Approach', pattern: workBehaviorsData.conflict_approach },
+    { behavior: 'Under Deadline', pattern: workBehaviorsData.under_deadline },
   ]
 
   workBehaviors.forEach((item) => {
@@ -1865,7 +2128,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(20)
   doc.setTextColor(...COLORS.NAVY)
-  doc.text('The Dominant Professional', margin, y)
+  doc.text(`The ${PROFILES[respondent.primary_style].name} Professional`, margin, y)
   y += 2
   doc.setDrawColor(...COLORS.GOLD)
   doc.line(margin, y, margin + 80, y)
@@ -1874,7 +2137,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(50, 50, 50)
-  const profText = 'In professional settings, the Dominant style brings leadership, decisiveness, and an unwavering results orientation. You are naturally suited to roles that require taking charge, making tough decisions, and driving change in the face of resistance. You excel in competitive environments where clear goals and measurable results are the primary currency. You are comfortable with pressure and perform at your best when the stakes are high and someone needs to lead from the front.'
+  const profText = PROFILES[respondent.primary_style].professional_description
   const profLines = doc.splitTextToSize(profText, contentWidth - 2)
   profLines.forEach((line) => {
     doc.text(line, margin + 1, y)
@@ -1894,12 +2157,11 @@ async function generateDiscPDF(respondent) {
   doc.text('Characteristics', margin + profColWidth + 1, y + 2.5)
   y += 4
 
-  const profCharacteristics = [
-    { category: 'Leadership & Authority', chars: ['Takes charge naturally', 'Prefers leading to following', 'Pushes self and others to higher standards'] },
-    { category: 'Decision-Making & Action', chars: ['Makes quick, confident decisions', 'Moves at a fast pace', 'Comfortable with risk and ambiguity'] },
-    { category: 'Results & Competition', chars: ['Focuses relentlessly on the bottom line', 'Competitive and determined to win', 'Believes results speak louder than intentions'] },
-    { category: 'Communication & Change', chars: ['Direct in communication and feedback', 'Challenges the status quo', 'Not bound by tradition or "the way we have always done it"'] },
-  ]
+  const profCatsData = PROFILES[respondent.primary_style].professional_categories
+  const profCharacteristics = Object.entries(profCatsData).map(([category, chars]) => ({
+    category,
+    chars,
+  }))
 
   profCharacteristics.forEach((item, idx) => {
     doc.setFillColor(idx % 2 === 0 ? 255 : 249, idx % 2 === 0 ? 255 : 249, idx % 2 === 0 ? 255 : 249)
@@ -1930,7 +2192,11 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7)
   doc.setTextColor(50, 50, 50)
-  doc.text('Executive Leadership, C-Suite, Entrepreneurship, Business Ownership, Sales Leadership, Crisis Management, Operations, Negotiations', margin + 2, y + 5)
+  const rolesText = PROFILES[respondent.primary_style].professional_roles.join(', ')
+  const rolesLines = doc.splitTextToSize(rolesText, contentWidth - 4)
+  rolesLines.forEach((line, i) => {
+    doc.text(line, margin + 2, y + 5 + i * 3)
+  })
   y += 11
 
   doc.setFillColor(240, 220, 210)
@@ -1942,7 +2208,11 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7)
   doc.setTextColor(50, 50, 50)
-  doc.text('Fast-paced, results-driven, clear metrics, competitive benchmarks, autonomy to make decisions, minimal red tape, and visible scoreboard that tracks performance.', margin + 2, y + 5)
+  const envText = PROFILES[respondent.primary_style].professional_environment
+  const envLines = doc.splitTextToSize(envText, contentWidth - 4)
+  envLines.forEach((line, i) => {
+    doc.text(line, margin + 2, y + 5 + i * 3)
+  })
   y += 11
 
   doc.setFillColor(210, 210, 240)
@@ -1954,7 +2224,11 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7)
   doc.setTextColor(50, 50, 50)
-  doc.text('Colleagues experience you as a decisive, high-energy leader who cuts through ambiguity and drives action. They respect your ability to make tough calls under pressure and your willingness to take ownership of outcomes.', margin + 2, y + 5)
+  const colleagueText = PROFILES[respondent.primary_style].colleague_experience
+  const colleagueLines = doc.splitTextToSize(colleagueText, contentWidth - 4)
+  colleagueLines.forEach((line, i) => {
+    doc.text(line, margin + 2, y + 5 + i * 3)
+  })
   y += 11
 
   doc.setFont('helvetica', 'italic')
@@ -2003,13 +2277,12 @@ async function generateDiscPDF(respondent) {
   doc.text('How to Leverage It', margin + tipColWidth + 1, y + 2.5)
   y += 4
 
-  const tips = [
-    { num: '1', trait: 'DECISIVENESS IN ACTION', how: 'Your ability to make quick decisions is one of your greatest professional assets. In high-pressure situations, your team looks to you for direction and confident choices. Leverage this deliberately — when you see the team stalling, step in with a clear recommendation backed by your assessment of the situation.' },
-    { num: '2', trait: 'MANAGING YOUR INTENSITY', how: 'Your drive and intensity inspire some people and intimidate others. Pay close attention to your body language and vocal tone — crossed arms, rapid-fire questions, and impatient sighs send messages louder than your words. Practice moderating your intensity in one-on-one conversations — maintain warm eye contact and ask open-ended questions before stating your position.' },
-    { num: '3', trait: 'DELEGATION WITH PURPOSE', how: 'You naturally delegate tasks, but you may skip the critical step of explaining why the task matters. When people understand the purpose behind an assignment, they take greater ownership and deliver better results. Take thirty extra seconds to connect the task to the larger goal.' },
-    { num: '4', trait: 'BUILDING BUY-IN', how: 'Your instinct is to decide and announce. This is efficient, but it often leaves people feeling like they were not consulted. Before making major decisions, identify two or three people whose input would improve the outcome and whose buy-in you need for successful execution. Ask for their perspective, genuinely consider it, and acknowledge their contribution even if the final decision is yours.' },
-    { num: '5', trait: 'STRATEGIC PATIENCE', how: 'Speed is your default mode, and it serves you well in many situations. However, some of your most important goals require sustained effort over time rather than a single burst of energy. Practice identifying which situations require speed and which require patience. Develop the discipline to slow down when the stakes are high and the timeline is long.' },
-  ]
+  const stylesWithTips20 = WORKPLACE_TIPS[respondent.primary_style] || []
+  const tips = stylesWithTips.slice(0, 5).map((tip, idx) => ({
+    num: (idx + 1).toString(),
+    trait: tip[0],
+    how: tip[1],
+  }))
 
   tips.forEach((tip) => {
     doc.setFillColor(250, 250, 250)
@@ -2045,7 +2318,7 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.5)
   doc.setTextColor(50, 50, 50)
-  const whyText = doc.splitTextToSize('These tips are not about changing who you are. Your drive, decisiveness, and results orientation are genuine strengths that organizations need. These tips are about refining how you deploy those strengths so they land the way you intend. The most effective Dominant leaders are not the ones who push hardest — they are the ones who know exactly when to push and when to pause. Remember: the people around you are not obstacles to your goals — they are the engine that makes sustainable results possible.', contentWidth - 4)
+  const whyText = doc.splitTextToSize('These tips are not about changing who you are. Your natural strengths are genuine assets that organizations need. These tips are about refining how you deploy those strengths so they land the way you intend. The most effective professionals are those who can adapt their approach to the situation while maintaining authenticity.  Remember: the people around you are not obstacles to your goals — they are essential partners in achieving sustainable results.', contentWidth - 4)
   whyText.forEach((line, i) => {
     doc.text(line, margin + 2, y + 5 + i * 2.5)
   })
@@ -2080,8 +2353,8 @@ async function generateDiscPDF(respondent) {
   doc.text('How to Leverage It', margin + tipColWidth21 + 1, y + 2.5)
   y += 4
 
-  const stylesWithTips = WORKPLACE_TIPS[respondent.primary_style] || []
-  const tips610 = stylesWithTips.slice(5, 10)
+  const stylesWithTips21 = WORKPLACE_TIPS[respondent.primary_style] || []
+  const tips610 = stylesWithTips21.slice(5, 10)
   tips610.forEach((tip, idx) => {
     const tipNum = (6 + idx).toString()
     doc.setFillColor(250, 250, 250)
@@ -2118,16 +2391,16 @@ async function generateDiscPDF(respondent) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.5)
   doc.setTextColor(50, 50, 50)
-  const practiceText = doc.splitTextToSize('Pick one tip each week to focus on intentionally. Start with the ones that feel most uncomfortable — that is where your growth edge lives. Your natural bias is toward action, so resist the urge to read all ten and move on. Instead, choose one, practice it deliberately for five days, and then reflect on what changed. The goal is not to become someone you are not — it is to become a more effective version of who you already are. Small, consistent adjustments in how you lead, communicate, and delegate will compound into significant professional growth over time.', contentWidth - 4)
+  const practiceText = doc.splitTextToSize('Pick one tip each week to focus on intentionally. Start with the ones that feel most uncomfortable — that is where your growth edge lives. Resist the urge to read all ten and move on. Instead, choose one, practice it deliberately for five days, and then reflect on what changed. The goal is not to become someone you are not — it is to become a more effective version of who you already are. Small, consistent adjustments in how you lead, communicate, and connect with others will compound into significant professional growth over time.', contentWidth - 4)
   practiceText.forEach((line, i) => {
     doc.text(line, margin + 2, y + 5 + i * 2.5)
   })
   y += 18
 
   // Your Priority Focus Areas callout
-  const tipTitle2 = stylesWithTips.length > 1 ? stylesWithTips[1][0] : 'Tip 2'
-  const tipTitle4 = stylesWithTips.length > 3 ? stylesWithTips[3][0] : 'Tip 4'
-  const tipTitle7 = stylesWithTips.length > 6 ? stylesWithTips[6][0] : 'Tip 7'
+  const tipTitle2 = stylesWithTips21.length > 1 ? stylesWithTips21[1][0] : 'Tip 2'
+  const tipTitle4 = stylesWithTips21.length > 3 ? stylesWithTips21[3][0] : 'Tip 4'
+  const tipTitle7 = stylesWithTips21.length > 6 ? stylesWithTips21[6][0] : 'Tip 7'
   doc.setFillColor(210, 210, 240)
   doc.rect(margin, y, contentWidth, 10, 'FD')
   doc.setFont('helvetica', 'bold')
@@ -2270,8 +2543,8 @@ async function generateDiscPDF(respondent) {
   y += 8
 
   // Three line graphs (simplified visualization)
-  const graphWidth = (contentWidth - 4) / 3
-  const graphHeight = 25
+  const graphWidth24 = (contentWidth - 4) / 3
+  const graphHeight24 = 25
   const graphs = [
     { title: 'Core', scores: respondent.core_scores || {} },
     { title: 'Context', scores: respondent.context_scores || {} },
@@ -2279,7 +2552,7 @@ async function generateDiscPDF(respondent) {
   ]
 
   graphs.forEach((graph, idx) => {
-    const gx = margin + idx * (graphWidth + 2)
+    const gx = margin + idx * (graphWidth24 + 2)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8)
     doc.setTextColor(...COLORS.NAVY)
@@ -2288,8 +2561,8 @@ async function generateDiscPDF(respondent) {
     // Simple line visualization
     doc.setDrawColor(150, 150, 150)
     doc.setLineWidth(0.2)
-    doc.line(gx, y + 4, gx + graphWidth, y + 4) // baseline
-    doc.line(gx, y + 2, gx, y + graphHeight + 2) // y-axis
+    doc.line(gx, y + 4, gx + graphWidth24, y + 4) // baseline
+    doc.line(gx, y + 2, gx, y + graphHeight24 + 2) // y-axis
 
     // Plot points for D, I, S, C
     const dims = ['D', 'I', 'S', 'C']
