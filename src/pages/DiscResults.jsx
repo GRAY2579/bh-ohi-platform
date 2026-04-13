@@ -676,7 +676,7 @@ async function generateDiscPDF(respondent) {
       doc.setTextColor(...styleColors[style])
       doc.text(style, xPos - 1.5, baseline + 4)
       doc.setFontSize(6)
-      doc.text(Math.round(score), xPos - 1.5, baseline + 7)
+      doc.text(Math.round(score).toString(), xPos - 1.5, baseline + 7)
     })
 
     // Draw title
@@ -2575,8 +2575,8 @@ async function generateDiscPDF(respondent) {
     }
     dims.forEach((dim, di) => {
       const score = graph.scores[dim] || 50
-      const normalized = (score / 100) * (graphHeight - 2)
-      const px = gx + (di * graphWidth) / 4 + 2
+      const normalized = (score / 100) * (graphHeight24 - 2)
+      const px = gx + (di * graphWidth24) / 4 + 2
       const py = y + 4 - normalized
       doc.setFillColor(...dimColors[dim])
       doc.circle(px, py, 1, 'F')
