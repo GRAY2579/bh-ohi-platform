@@ -75,7 +75,7 @@ export default function DiscSurvey() {
     Array(24).fill(null).map(() => ({ most: null, least: null }))
   )
   const [currentGroup, setCurrentGroup] = useState(0)
-  const [startTime] = useState(Date.now())
+  // startTime removed — duration_seconds column not in table
 
   useEffect(() => {
     loadSurvey()
@@ -191,8 +191,6 @@ export default function DiscSurvey() {
       const contextPercent = DISC_SCORING.toPercentScale(context)
       const conflictPercent = DISC_SCORING.toPercentScale(conflict)
 
-      const duration = Math.round((Date.now() - startTime) / 1000)
-
       // Prepare most/least selections in letter format
       const mostSelections = selections.map(s => s.most)
       const leastSelections = selections.map(s => s.least)
@@ -203,7 +201,6 @@ export default function DiscSurvey() {
         .update({
           status: 'completed',
           completed_at: new Date().toISOString(),
-          duration_seconds: duration,
           primary_style: primary,
           secondary_style: secondary,
           core_scores: corePercent,
@@ -215,7 +212,8 @@ export default function DiscSurvey() {
         .eq('id', respondent.id)
 
       if (updateErr) {
-        setError('Failed to save assessment results. Please try again.')
+        console.error('DISC save error:', updateErr)
+        setError(`Failed to save assessment results: ${updateErr.message || 'Unknown error'}. Please try again.`)
         setSubmitting(false)
         return
       }
