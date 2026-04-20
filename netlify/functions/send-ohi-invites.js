@@ -24,7 +24,7 @@ exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) }
 
   try {
-    const { engagement_id, filter = 'pending', subject, body } = JSON.parse(event.body)
+    const { engagement_id, filter = 'pending', group = 'all', subject, body } = JSON.parse(event.body)
 
     if (!engagement_id) throw new Error('engagement_id is required')
     if (!SENDGRID_API_KEY) throw new Error('SENDGRID_API_KEY not configured')
@@ -38,7 +38,15 @@ exports.handler = async (event) => {
     let query = supabase.from('ohi_respondents').select('*').eq('engagement_id', engagement_id)
     if (filter === 'pending') query = query.eq('status', 'pending')
     else if (filter === 'in_progress') query = query.eq('status', 'in_progress')
-    // 'all' = no additional filter
+    // 'all' = no additional status filter
+
+    // Group filter: admin | faculty | student | ungrouped | all
+    if (group === 'admin' || group === 'faculty' || group === 'student') {
+      query = query.eq('group_name', group)
+    } else if (group === 'ungrouped') {
+      query = query.is('group_name', null)
+    }
+    // 'all' = no group filter
 
     const { data: respondents, error: respErr } = await query
     if (respErr) throw respErr
@@ -109,12 +117,13 @@ exports.handler = async (event) => {
       }
     }
 
-    // Log the batch
+    // Log the batch (recipient_filter records both status + group for audit)
+    const filterLabel = group && group !== 'all' ? `${filter}/${group}` : filter
     await supabase.from('ohi_project_emails').insert([{
       engagement_id,
       subject: emailSubject,
       body: body || '(default invite template)',
-      recipient_filter: filter,
+      recipient_filter: filterLabel,
       status: 'sent',
       sent_at: new Date().toISOString(),
       recipient_count: sent,
