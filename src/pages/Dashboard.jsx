@@ -21,6 +21,16 @@ const fmtTime = (d) =>
 const statusColor = (s) =>
   ({ pending: '#F59E0B', in_progress: '#3B82F6', completed: '#1B8415' }[s] || '#888')
 
+const GROUP_OPTIONS = [
+  { value: 'admin',   label: 'Admin',   color: '#884934' },
+  { value: 'faculty', label: 'Faculty', color: '#131B55' },
+  { value: 'student', label: 'Student', color: '#1B8415' },
+]
+const groupColor = (g) =>
+  (GROUP_OPTIONS.find(o => o.value === g)?.color) || '#888'
+const groupLabel = (g) =>
+  (GROUP_OPTIONS.find(o => o.value === g)?.label) || 'Ungrouped'
+
 /* ── main component ────────────────────────────────────────── */
 
 export default function Dashboard() {
@@ -44,7 +54,11 @@ export default function Dashboard() {
   const [emailSubject, setEmailSubject] = useState('')
   const [emailBody, setEmailBody] = useState('')
   const [emailRecipients, setEmailRecipients] = useState('all')
+  const [emailGroup, setEmailGroup] = useState('all') // all | admin | faculty | student
   const [emailLog, setEmailLog] = useState([])
+
+  // Respondent table group filter
+  const [groupFilter, setGroupFilter] = useState('all') // all | admin | faculty | student | ungrouped
 
   // Edit modal state
   const [editForm, setEditForm] = useState({})
@@ -55,6 +69,8 @@ export default function Dashboard() {
   const [bulkEmails, setBulkEmails] = useState('')
   const [addCount, setAddCount] = useState('10')
   const [newIsLeader, setNewIsLeader] = useState(false)
+  const [newGroup, setNewGroup] = useState('')           // group for single-add
+  const [bulkGroup, setBulkGroup] = useState('')         // default group for bulk-add rows without a group column
 
   // DISC respondents state
   const [discRespondents, setDiscRespondents] = useState([])
@@ -123,6 +139,25 @@ export default function Dashboard() {
     return { total, completed, inProg, rate }
   })()
 
+  // Per-group completion rollup: { admin: {total, completed, rate}, faculty:..., student:..., ungrouped:... }
+  const groupStats = (() => {
+    const groups = ['admin', 'faculty', 'student', 'ungrouped']
+    const out = {}
+    for (const g of groups) {
+      const rows = respondents.filter(r => (r.group_name || 'ungrouped') === g)
+      const total = rows.length
+      const completed = rows.filter(r => r.status === 'completed').length
+      const rate = total > 0 ? Math.round((completed / total) * 100) : 0
+      out[g] = { total, completed, rate }
+    }
+    return out
+  })()
+
+  // Filter the respondent table by the selected group chip
+  const visibleRespondents = groupFilter === 'all'
+    ? respondents
+    : respondents.filter(r => (r.group_name || 'ungrouped') === groupFilter)
+
   /* ── actions ───────────────────────────────────────────── */
 
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -155,6 +190,20 @@ export default function Dashboard() {
       await supabase.from('ohi_engagements').delete().eq('id', id)
       navigate('/')
     } catch (err) { setError(err.message) } finally { setActionLoading(false) }
+  }
+
+  const handleUpdateGroup = async (respondentId, nextGroup) => {
+    // Optimistic UI — update locally, then Supabase
+    setRespondents(prev => prev.map(r =>
+      r.id === respondentId ? { ...r, group_name: nextGroup } : r
+    ))
+    const { error } = await supabase.from('ohi_respondents')
+      .update({ group_name: nextGroup })
+      .eq('id', respondentId)
+    if (error) {
+      setError(`Group update failed: ${error.message}`)
+      await fetchData() // roll back from source of truth
+    }
   }
 
   const handleDeleteRespondent = async (respondentId) => {
@@ -200,6 +249,7 @@ export default function Dashboard() {
       const { data: respData, error: e1 } = await supabase.from('ohi_respondents').insert([{
         engagement_id: id, token: oToken, email: newEmail.trim(), status: 'pending',
         is_leader: newIsLeader, disc_token: newIsLeader ? generateToken() : null,
+        group_name: newGroup || null,
       }]).select()
       if (e1) throw e1
 
@@ -224,24 +274,39 @@ export default function Dashboard() {
 
       setNewEmail('')
       setNewIsLeader(false)
+      setNewGroup('')
       await fetchData()
       flash('Respondent added')
     } catch (err) { setError(err.message) } finally { setActionLoading(false) }
   }
 
+  // Bulk input supports two forms:
+  //   1) "email@example.com"                        → group from bulkGroup default
+  //   2) "email@example.com, admin|faculty|student" → per-row group overrides default
+  const parseBulkRow = (line) => {
+    const parts = line.split(/[,\t]/).map(s => s.trim()).filter(Boolean)
+    if (parts.length === 0) return null
+    const email = parts[0]
+    const rawGroup = (parts[1] || '').toLowerCase()
+    const group = ['admin', 'faculty', 'student'].includes(rawGroup) ? rawGroup : null
+    return { email, group }
+  }
+
   const handleBulkAdd = async () => {
-    const emails = bulkEmails.split('\n').map(e => e.trim()).filter(e => e.length > 0)
-    if (emails.length === 0) return
+    const parsed = bulkEmails.split('\n').map(parseBulkRow).filter(Boolean)
+    if (parsed.length === 0) return
     try {
       setActionLoading(true)
-      const rows = emails.map(email => ({
+      const rows = parsed.map(({ email, group }) => ({
         engagement_id: id, token: generateToken(), email, status: 'pending',
+        group_name: group || bulkGroup || null,
       }))
       const { error } = await supabase.from('ohi_respondents').insert(rows)
       if (error) throw error
       setBulkEmails('')
+      setBulkGroup('')
       await fetchData()
-      flash(`${emails.length} respondents added`)
+      flash(`${parsed.length} respondents added`)
     } catch (err) { setError(err.message) } finally { setActionLoading(false) }
   }
 
@@ -328,18 +393,29 @@ export default function Dashboard() {
       return
     }
 
-    const targets = emailRecipients === 'pending'
+    const byStatus = emailRecipients === 'pending'
       ? respondents.filter(r => r.status === 'pending' && r.email)
       : emailRecipients === 'in_progress'
       ? respondents.filter(r => r.status === 'in_progress' && r.email)
       : respondents.filter(r => r.email)
+
+    const targets = emailGroup === 'all'
+      ? byStatus
+      : emailGroup === 'ungrouped'
+      ? byStatus.filter(r => !r.group_name)
+      : byStatus.filter(r => r.group_name === emailGroup)
 
     if (targets.length === 0) {
       setError('No respondents with email addresses found for selected filter')
       return
     }
 
-    if (!confirm(`Send emails to ${targets.length} respondents via SendGrid?`)) return
+    const groupLabelStr = emailGroup === 'all'
+      ? ''
+      : emailGroup === 'ungrouped'
+      ? ' (Ungrouped only)'
+      : ` (${groupLabel(emailGroup)} only)`
+    if (!confirm(`Send emails to ${targets.length} respondents${groupLabelStr} via SendGrid?`)) return
 
     try {
       setActionLoading(true)
@@ -350,6 +426,7 @@ export default function Dashboard() {
         body: JSON.stringify({
           engagement_id: id,
           filter: emailRecipients,
+          group: emailGroup,
           subject: emailSubject,
           body: emailBody,
         }),
@@ -371,12 +448,19 @@ export default function Dashboard() {
   }
 
   const handleSendReminders = async () => {
-    const incomplete = respondents.filter(r => r.status !== 'completed' && r.email && r.email_sent_at)
+    let incomplete = respondents.filter(r => r.status !== 'completed' && r.email && r.email_sent_at)
+    if (emailGroup === 'ungrouped') incomplete = incomplete.filter(r => !r.group_name)
+    else if (emailGroup !== 'all') incomplete = incomplete.filter(r => r.group_name === emailGroup)
     if (incomplete.length === 0) {
       setError('No incomplete respondents to remind')
       return
     }
-    if (!confirm(`Send reminder emails to ${incomplete.length} incomplete respondents?`)) return
+    const groupLabelStr = emailGroup === 'all'
+      ? ''
+      : emailGroup === 'ungrouped'
+      ? ' (Ungrouped only)'
+      : ` (${groupLabel(emailGroup)} only)`
+    if (!confirm(`Send reminder emails to ${incomplete.length} incomplete respondents${groupLabelStr}?`)) return
 
     try {
       setActionLoading(true)
@@ -386,6 +470,7 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           engagement_id: id,
+          group: emailGroup,
           subject: emailSubject || null,
           message: emailBody || null,
         }),
@@ -532,36 +617,96 @@ export default function Dashboard() {
         {/* ── Tab: Completion Grid ──────────────────────── */}
         {activeTab === 'completion' && (
           <div style={S.card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#131B55' }}>
-                Respondent Status ({respondents.length})
+                Respondent Status ({visibleRespondents.length}{groupFilter !== 'all' ? ` of ${respondents.length}` : ''})
               </h3>
               <button style={{ ...S.btnSm, background: '#131B55', color: '#fff', border: 'none' }}
                 onClick={() => setShowAddModal(true)} disabled={engagement.status === 'closed'}>
                 + Add Respondents
               </button>
             </div>
+
+            {/* ── Per-group response-rate strip ─────────── */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+              {[
+                { key: 'all',     label: 'All',       total: respondents.length, completed: stats.completed, rate: stats.rate, color: '#131B55' },
+                { key: 'admin',   label: 'Admin',     ...groupStats.admin,    color: groupColor('admin') },
+                { key: 'faculty', label: 'Faculty',   ...groupStats.faculty,  color: groupColor('faculty') },
+                { key: 'student', label: 'Student',   ...groupStats.student,  color: groupColor('student') },
+                ...(groupStats.ungrouped.total > 0
+                  ? [{ key: 'ungrouped', label: 'Ungrouped', ...groupStats.ungrouped, color: '#888' }]
+                  : []),
+              ].map(chip => {
+                const active = groupFilter === chip.key
+                return (
+                  <button key={chip.key}
+                    onClick={() => setGroupFilter(chip.key)}
+                    style={{
+                      cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                      padding: '8px 14px', borderRadius: 8, border: `1.5px solid ${active ? chip.color : '#E2E2EA'}`,
+                      background: active ? `${chip.color}12` : '#fff',
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      transition: 'all 0.15s',
+                    }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: chip.color }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: active ? chip.color : '#374151', letterSpacing: 0.3 }}>
+                      {chip.label}
+                    </span>
+                    <span style={{ fontSize: 12, color: '#666', fontVariantNumeric: 'tabular-nums' }}>
+                      {chip.completed}/{chip.total}
+                      {chip.total > 0 && <span style={{ marginLeft: 6, color: '#999' }}>({chip.rate}%)</span>}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
             {respondents.length === 0 ? (
               <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>
                 No respondents yet. Click "+ Add Respondents" to get started.
+              </div>
+            ) : visibleRespondents.length === 0 ? (
+              <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>
+                No respondents match the <strong>{groupLabel(groupFilter)}</strong> filter.
+                <div style={{ marginTop: 12 }}>
+                  <button style={{ ...S.btnSm }} onClick={() => setGroupFilter('all')}>Clear filter</button>
+                </div>
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#131B55' }}>
-                      {['EMAIL / TOKEN', 'LEADER', 'STATUS', 'STARTED', 'COMPLETED', 'DURATION', ''].map(h => (
+                      {['EMAIL / TOKEN', 'GROUP', 'LEADER', 'STATUS', 'STARTED', 'COMPLETED', 'DURATION', ''].map(h => (
                         <th key={h || '_actions'} style={{ padding: '12px 16px', textAlign: h ? 'left' : 'center', fontSize: 11, fontWeight: 700, color: '#fff', letterSpacing: 0.8, width: h ? undefined : 50 }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {respondents.map(r => (
+                    {visibleRespondents.map(r => (
                       <tr key={r.id} style={{ borderBottom: '1px solid #E2E2EA' }}
                         onMouseEnter={e => e.currentTarget.style.background = '#F8F8FC'}
                         onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
                         <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: '#131B55' }}>
                           {r.email || <span style={{ fontFamily: 'monospace', color: '#888' }}>{r.token}</span>}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <select
+                            value={r.group_name || ''}
+                            onChange={e => handleUpdateGroup(r.id, e.target.value || null)}
+                            style={{
+                              padding: '4px 8px', fontSize: 11, fontWeight: 700, letterSpacing: 0.3,
+                              border: `1px solid ${r.group_name ? groupColor(r.group_name) : '#D1D5DB'}`,
+                              borderRadius: 4,
+                              background: r.group_name ? `${groupColor(r.group_name)}18` : '#fff',
+                              color: r.group_name ? groupColor(r.group_name) : '#888',
+                              cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                            }}>
+                            <option value="">—</option>
+                            {GROUP_OPTIONS.map(o => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
                         </td>
                         <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                           {r.is_leader ? (
@@ -661,14 +806,41 @@ export default function Dashboard() {
               <button style={{ ...S.btnSm, background: '#DC2626', color: '#fff', border: 'none' }} onClick={() => loadTemplate('closing')}>Load Final Notice</button>
             </div>
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={S.label}>Recipients</label>
-              <select value={emailRecipients} onChange={e => setEmailRecipients(e.target.value)} style={S.input}>
-                <option value="all">All respondents with email ({respondents.filter(r => r.email).length})</option>
-                <option value="pending">Pending only ({respondents.filter(r => r.status === 'pending' && r.email).length})</option>
-                <option value="in_progress">In Progress only ({respondents.filter(r => r.status === 'in_progress' && r.email).length})</option>
-              </select>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div>
+                <label style={S.label}>Status Filter</label>
+                <select value={emailRecipients} onChange={e => setEmailRecipients(e.target.value)} style={S.input}>
+                  <option value="all">All respondents with email ({respondents.filter(r => r.email).length})</option>
+                  <option value="pending">Pending only ({respondents.filter(r => r.status === 'pending' && r.email).length})</option>
+                  <option value="in_progress">In Progress only ({respondents.filter(r => r.status === 'in_progress' && r.email).length})</option>
+                </select>
+              </div>
+              <div>
+                <label style={S.label}>Group Filter</label>
+                <select value={emailGroup} onChange={e => setEmailGroup(e.target.value)} style={S.input}>
+                  <option value="all">All groups ({respondents.filter(r => r.email).length})</option>
+                  {GROUP_OPTIONS.map(o => {
+                    const n = respondents.filter(r => r.email && r.group_name === o.value).length
+                    return <option key={o.value} value={o.value}>{o.label} ({n})</option>
+                  })}
+                  <option value="ungrouped">Ungrouped ({respondents.filter(r => r.email && !r.group_name).length})</option>
+                </select>
+              </div>
             </div>
+            {emailGroup !== 'all' && (
+              <div style={{
+                background: '#FFF8E6',
+                border: '1px solid #F3E3A8',
+                borderLeft: `4px solid ${emailGroup === 'ungrouped' ? '#888' : groupColor(emailGroup)}`,
+                borderRadius: 6,
+                padding: '8px 12px',
+                marginBottom: 16,
+                fontSize: 12,
+                color: '#555',
+              }}>
+                Sending to <strong style={{ color: emailGroup === 'ungrouped' ? '#555' : groupColor(emailGroup) }}>{emailGroup === 'ungrouped' ? 'Ungrouped respondents' : groupLabel(emailGroup) + ' only'}</strong> — other groups will not receive this email.
+              </div>
+            )}
 
             <div style={{ marginBottom: 16 }}>
               <label style={S.label}>Subject</label>
@@ -872,6 +1044,15 @@ export default function Dashboard() {
                   <label style={S.label}>Email Address</label>
                   <input type="email" style={S.input} value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="respondent@example.com" />
                 </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={S.label}>Group</label>
+                  <select style={S.input} value={newGroup} onChange={e => setNewGroup(e.target.value)}>
+                    <option value="">— Ungrouped —</option>
+                    {GROUP_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
                 <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <input
                     type="checkbox"
@@ -894,9 +1075,21 @@ export default function Dashboard() {
             {addMode === 'bulk' && (
               <>
                 <div style={{ marginBottom: 16 }}>
-                  <label style={S.label}>Email Addresses (one per line)</label>
+                  <label style={S.label}>Default Group (applies to rows with no group)</label>
+                  <select style={S.input} value={bulkGroup} onChange={e => setBulkGroup(e.target.value)}>
+                    <option value="">— Ungrouped —</option>
+                    {GROUP_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={S.label}>Emails (one per line, optional <code>,group</code> override)</label>
                   <textarea style={{ ...S.input, fontFamily: 'monospace', fontSize: 13 }} rows={8} value={bulkEmails}
-                    onChange={e => setBulkEmails(e.target.value)} placeholder={'email1@example.com\nemail2@example.com\nemail3@example.com'} />
+                    onChange={e => setBulkEmails(e.target.value)} placeholder={'dean@example.com, admin\nprof1@example.com, faculty\nstudent1@example.com, student\nanon@example.com'} />
+                  <p style={{ fontSize: 12, color: '#888', margin: '6px 0 0' }}>
+                    Format: <code>email</code> or <code>email, group</code>. Accepted groups: <code>admin</code>, <code>faculty</code>, <code>student</code>.
+                  </p>
                 </div>
                 <button style={{ ...S.btnSm, background: '#131B55', color: '#fff', border: 'none', width: '100%', padding: '12px' }}
                   onClick={handleBulkAdd} disabled={actionLoading || !bulkEmails.trim()}>
