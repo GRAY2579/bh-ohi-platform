@@ -25,7 +25,7 @@ exports.handler = async (event) => {
 
   try {
     const body = event.body ? JSON.parse(event.body) : {}
-    const { engagement_id, subject, message } = body
+    const { engagement_id, group = 'all', subject, message } = body
 
     if (!SENDGRID_API_KEY) throw new Error('SENDGRID_API_KEY not configured')
 
@@ -47,13 +47,21 @@ exports.handler = async (event) => {
         ? closeDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
         : 'TBD'
 
-      // Get incomplete respondents who were already invited
-      const { data: respondents } = await supabase
+      // Get incomplete respondents who were already invited, optionally filtered by group
+      let respQuery = supabase
         .from('ohi_respondents').select('*')
         .eq('engagement_id', eng.id)
         .in('status', ['pending', 'in_progress'])
         .not('email', 'is', null)
         .not('email_sent_at', 'is', null)
+
+      if (group === 'admin' || group === 'faculty' || group === 'student') {
+        respQuery = respQuery.eq('group_name', group)
+      } else if (group === 'ungrouped') {
+        respQuery = respQuery.is('group_name', null)
+      }
+
+      const { data: respondents } = await respQuery
 
       if (!respondents || respondents.length === 0) continue
 
@@ -124,13 +132,14 @@ exports.handler = async (event) => {
         }
       }
 
-      // Log the reminder batch
+      // Log the reminder batch (record group in filter label for audit)
       if (totalSent > 0) {
+        const filterLabel = group && group !== 'all' ? `incomplete/${group}` : 'incomplete'
         await supabase.from('ohi_project_emails').insert([{
           engagement_id: eng.id,
           subject: emailSubject,
           body: message || `(${urgency} reminder template)`,
-          recipient_filter: 'incomplete',
+          recipient_filter: filterLabel,
           status: 'sent',
           sent_at: now.toISOString(),
           recipient_count: totalSent,
