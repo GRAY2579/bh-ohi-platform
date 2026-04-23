@@ -75,6 +75,10 @@ export default function Dashboard() {
   // DISC respondents state
   const [discRespondents, setDiscRespondents] = useState([])
 
+  // OHI Results state (raw response rows + detail-drawer respondent)
+  const [ohiResponses, setOhiResponses] = useState([])
+  const [detailRespondent, setDetailRespondent] = useState(null)
+
   const shareRef = useRef(null)
 
   useEffect(() => { fetchData() }, [id])
@@ -122,6 +126,11 @@ export default function Dashboard() {
         .from('ohi_project_emails').select('*').eq('engagement_id', id)
         .order('sent_at', { ascending: false })
       setEmailLog(emails || [])
+
+      // load OHI responses (for Results tab — individual + aggregated)
+      const { data: ohiResps } = await supabase
+        .from('ohi_responses').select('*').eq('engagement_id', id)
+      setOhiResponses(ohiResps || [])
     } catch (err) {
       setError(err.message)
     } finally {
@@ -522,11 +531,68 @@ export default function Dashboard() {
 
   const tabs = [
     { key: 'completion', label: 'Completion Grid' },
+    { key: 'results', label: 'OHI Results' },
     { key: 'links', label: 'Survey Links' },
     { key: 'email', label: 'Email Manager' },
     { key: 'disc', label: 'DISC Tracker' },
     { key: 'emails_sent', label: 'Project Emails' },
   ]
+
+  /* ── OHI Results helpers ───────────────────────────────── */
+  // Pillar definitions — 8 Likert items per pillar (1–5 scale).
+  const PILLARS = [
+    { key: 'T',  label: 'Trust',         color: '#131B55', items: ['T1','T2','T3','T4','T5','T6','T7','T8'] },
+    { key: 'ST', label: 'Structure',     color: '#884934', items: ['ST1','ST2','ST3','ST4','ST5','ST6','ST7','ST8'] },
+    { key: 'P',  label: 'People',        color: '#1B8415', items: ['P1','P2','P3','P4','P5','P6','P7','P8'] },
+    { key: 'V',  label: 'Vision',        color: '#C5A572', items: ['V1','V2','V3','V4','V5','V6','V7','V8'] },
+    { key: 'C',  label: 'Communication', color: '#92C0E9', items: ['C1','C2','C3','C4','C5','C6','C7','C8'] },
+  ]
+  const SELF_KEYS = { T: 'S_T', ST: 'S_ST', P: 'S_P', V: 'S_V', C: 'S_C' }
+  const OPEN_KEYS = ['O1', 'O2', 'O3', 'O4', 'O5']
+  const DEMO_KEYS = ['role', 'department', 'employment_status', 'years']
+
+  // Build answer-map for a single respondent: { question_key: row }
+  const answerMapFor = (respId) => {
+    const out = {}
+    for (const r of ohiResponses) if (r.respondent_id === respId) out[r.question_key] = r
+    return out
+  }
+
+  // Mean pillar score (1–5) for a respondent given their answer map
+  const pillarMean = (aMap, pillar) => {
+    const vals = pillar.items.map(k => aMap[k]?.value_int).filter(v => typeof v === 'number')
+    if (!vals.length) return null
+    return vals.reduce((a, b) => a + b, 0) / vals.length
+  }
+
+  // Overall mean across the 5 pillars for a respondent
+  const overallMean = (aMap) => {
+    const means = PILLARS.map(p => pillarMean(aMap, p)).filter(v => v !== null)
+    if (!means.length) return null
+    return means.reduce((a, b) => a + b, 0) / means.length
+  }
+
+  // Completed respondents (only those show up under Results)
+  const completedRespondents = respondents.filter(r => r.status === 'completed')
+
+  // Aggregate pillar scores across all completed respondents (and by group)
+  const aggPillarScores = (rows) => {
+    return PILLARS.map(p => {
+      const scores = rows.map(r => pillarMean(answerMapFor(r.id), p)).filter(v => v !== null)
+      return {
+        ...p,
+        n: scores.length,
+        mean: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null,
+      }
+    })
+  }
+
+  const scoreColor = (v) =>
+    v === null || v === undefined ? '#CCC'
+      : v >= 3.75 ? '#1B8415'
+      : v >= 3.0  ? '#C5A572'
+      : v >= 2.0  ? '#F59E0B'
+      :             '#DC2626'
 
   return (
     <div style={{ minHeight: '100vh', background: '#F0F1F5', fontFamily: 'Inter, -apple-system, sans-serif' }}>
@@ -955,6 +1021,126 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* ── Tab: OHI Results ──────────────────────────── */}
+        {activeTab === 'results' && (
+          <div>
+            {completedRespondents.length === 0 ? (
+              <div style={{ ...S.card, padding: 40, textAlign: 'center', color: '#888' }}>
+                No completed surveys yet. Results will appear here as respondents finish the OHI.
+              </div>
+            ) : (
+              <>
+                {/* ── Aggregate pillar scores (all completed) ────── */}
+                <div style={{ ...S.card, marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#131B55' }}>
+                      Aggregate Pillar Scores ({completedRespondents.length} completed, 1&ndash;5 scale)
+                    </h3>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+                    {aggPillarScores(completedRespondents).map(p => (
+                      <div key={p.key} style={{ background: '#F8F9FB', borderRadius: 8, padding: 16, borderLeft: `4px solid ${p.color}` }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#888', letterSpacing: 0.5, textTransform: 'uppercase' }}>{p.label}</div>
+                        <div style={{ fontSize: 28, fontWeight: 800, color: scoreColor(p.mean), marginTop: 6, lineHeight: 1 }}>
+                          {p.mean !== null ? p.mean.toFixed(2) : '—'}
+                        </div>
+                        <div style={{ marginTop: 10, height: 6, background: '#E2E2EA', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: p.mean ? `${(p.mean / 5) * 100}%` : '0%', background: p.color }} />
+                        </div>
+                        <div style={{ fontSize: 11, color: '#888', marginTop: 6 }}>n={p.n}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── By-group breakdown ─────────────────────────── */}
+                <div style={{ ...S.card, marginBottom: 16 }}>
+                  <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: '#131B55' }}>By Group</h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#131B55' }}>
+                          {['GROUP', 'N', ...PILLARS.map(p => p.label.toUpperCase()), 'OVERALL'].map(h => (
+                            <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#fff', letterSpacing: 0.8 }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {['admin', 'faculty', 'student', 'ungrouped'].map(g => {
+                          const rows = completedRespondents.filter(r => (r.group_name || 'ungrouped') === g)
+                          if (rows.length === 0) return null
+                          const agg = aggPillarScores(rows)
+                          const overall = agg.map(a => a.mean).filter(v => v !== null)
+                          const overallVal = overall.length ? overall.reduce((a, b) => a + b, 0) / overall.length : null
+                          return (
+                            <tr key={g} style={{ borderBottom: '1px solid #E2E2EA' }}>
+                              <td style={{ padding: '12px 14px', fontSize: 13, color: '#131B55', fontWeight: 600, textTransform: 'capitalize' }}>{g}</td>
+                              <td style={{ padding: '12px 14px', fontSize: 13, color: '#666' }}>{rows.length}</td>
+                              {agg.map(p => (
+                                <td key={p.key} style={{ padding: '12px 14px', fontSize: 13, fontWeight: 600, color: scoreColor(p.mean) }}>
+                                  {p.mean !== null ? p.mean.toFixed(2) : '—'}
+                                </td>
+                              ))}
+                              <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 700, color: scoreColor(overallVal) }}>
+                                {overallVal !== null ? overallVal.toFixed(2) : '—'}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* ── Individual respondents ─────────────────────── */}
+                <div style={S.card}>
+                  <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: '#131B55' }}>
+                    Individual Responses ({completedRespondents.length}) &mdash; click a row to see full answers
+                  </h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#131B55' }}>
+                          {['EMAIL', 'GROUP', 'COMPLETED', 'T', 'ST', 'P', 'V', 'C', 'OVERALL'].map(h => (
+                            <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#fff', letterSpacing: 0.8 }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {completedRespondents.map(r => {
+                          const aMap = answerMapFor(r.id)
+                          const scores = PILLARS.map(p => pillarMean(aMap, p))
+                          const overall = overallMean(aMap)
+                          return (
+                            <tr key={r.id} onClick={() => setDetailRespondent(r)}
+                              style={{ borderBottom: '1px solid #E2E2EA', cursor: 'pointer' }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#F8F9FB'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                              <td style={{ padding: '12px 14px', fontSize: 13, color: '#131B55', fontWeight: 500 }}>{r.email}</td>
+                              <td style={{ padding: '12px 14px', fontSize: 12 }}>
+                                <span style={{ background: groupColor(r.group_name || 'ungrouped'), color: '#fff', padding: '2px 8px', borderRadius: 10, fontWeight: 600, textTransform: 'capitalize' }}>{groupLabel(r.group_name || 'ungrouped')}</span>
+                              </td>
+                              <td style={{ padding: '12px 14px', fontSize: 12, color: '#888' }}>{fmtDate(r.completed_at)}</td>
+                              {scores.map((v, i) => (
+                                <td key={i} style={{ padding: '12px 14px', fontSize: 13, fontWeight: 600, color: scoreColor(v) }}>
+                                  {v !== null ? v.toFixed(2) : '—'}
+                                </td>
+                              ))}
+                              <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 700, color: scoreColor(overall) }}>
+                                {overall !== null ? overall.toFixed(2) : '—'}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* ── Tab: Project Emails ───────────────────────── */}
         {activeTab === 'emails_sent' && (
           <div style={S.card}>
@@ -1131,6 +1317,113 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* ── Respondent Detail Drawer (Results tab) ──────── */}
+      {detailRespondent && (() => {
+        const aMap = answerMapFor(detailRespondent.id)
+        const overall = overallMean(aMap)
+        return (
+          <div style={S.overlay} onClick={() => setDetailRespondent(null)}>
+            <div style={{ ...S.modal, maxWidth: 820, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#131B55' }}>{detailRespondent.email}</h2>
+                  <p style={{ margin: '4px 0 0', fontSize: 13, color: '#888' }}>
+                    <span style={{ background: groupColor(detailRespondent.group_name || 'ungrouped'), color: '#fff', padding: '2px 8px', borderRadius: 10, fontWeight: 600, fontSize: 11, textTransform: 'capitalize' }}>
+                      {groupLabel(detailRespondent.group_name || 'ungrouped')}
+                    </span>
+                    <span style={{ marginLeft: 10 }}>Completed {fmtDate(detailRespondent.completed_at)} {fmtTime(detailRespondent.completed_at)}</span>
+                    {detailRespondent.duration_seconds ? <span style={{ marginLeft: 10 }}>&bull; {Math.round(detailRespondent.duration_seconds / 60)} min</span> : null}
+                  </p>
+                </div>
+                <button style={S.btnSm} onClick={() => setDetailRespondent(null)}>Close</button>
+              </div>
+
+              {/* Overall + pillar summary */}
+              <div style={{ background: '#F8F9FB', borderRadius: 8, padding: 16, marginBottom: 20 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
+                  {PILLARS.map(p => {
+                    const v = pillarMean(aMap, p)
+                    return (
+                      <div key={p.key} style={{ borderLeft: `3px solid ${p.color}`, paddingLeft: 10 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 }}>{p.label}</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: scoreColor(v) }}>{v !== null ? v.toFixed(2) : '—'}</div>
+                      </div>
+                    )
+                  })}
+                  <div style={{ borderLeft: '3px solid #131B55', paddingLeft: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 }}>Overall</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: scoreColor(overall) }}>{overall !== null ? overall.toFixed(2) : '—'}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Demographics */}
+              <div style={{ marginBottom: 20 }}>
+                <h3 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700, color: '#131B55', textTransform: 'uppercase', letterSpacing: 0.5 }}>Demographics</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                  {DEMO_KEYS.map(k => (
+                    <div key={k} style={{ fontSize: 13 }}>
+                      <span style={{ color: '#888', textTransform: 'capitalize' }}>{k.replace('_', ' ')}:</span>{' '}
+                      <span style={{ color: '#131B55', fontWeight: 600 }}>{aMap[k]?.value_text || aMap[k]?.value_int || '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Per-pillar Likert items */}
+              {PILLARS.map(p => (
+                <div key={p.key} style={{ marginBottom: 18 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                    <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: p.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      {p.label}
+                    </h3>
+                    <span style={{ fontSize: 12, color: '#888' }}>
+                      Self-rating (S_{p.key}): <strong style={{ color: '#131B55' }}>{aMap[SELF_KEYS[p.key]]?.value_int ?? '—'}</strong>
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                    {p.items.map(k => {
+                      const v = aMap[k]?.value_int
+                      return (
+                        <div key={k} style={{ background: '#F8F9FB', borderRadius: 6, padding: '8px 10px', borderLeft: `3px solid ${scoreColor(v)}` }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: '#888', letterSpacing: 0.5 }}>{k}</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: scoreColor(v) }}>{v ?? '—'}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              {/* Open-ended responses */}
+              <div style={{ marginBottom: 12 }}>
+                <h3 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700, color: '#131B55', textTransform: 'uppercase', letterSpacing: 0.5 }}>Open-ended Responses</h3>
+                {OPEN_KEYS.map(k => {
+                  const text = aMap[k]?.value_text
+                  if (!text) return null
+                  return (
+                    <div key={k} style={{ background: '#F8F9FB', borderRadius: 6, padding: 12, marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#888', letterSpacing: 0.5, marginBottom: 4 }}>{k}</div>
+                      <div style={{ fontSize: 13, color: '#333', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{text}</div>
+                    </div>
+                  )
+                })}
+                {OPEN_KEYS.every(k => !aMap[k]?.value_text) && (
+                  <div style={{ fontSize: 12, color: '#888', fontStyle: 'italic' }}>No open-ended responses.</div>
+                )}
+              </div>
+
+              {/* Anchor */}
+              {aMap.ANCHOR && (
+                <div style={{ background: '#FEF3C7', borderRadius: 6, padding: 10, fontSize: 12, color: '#92400E' }}>
+                  <strong>Anchor (validity check):</strong> {aMap.ANCHOR.value_int ?? aMap.ANCHOR.value_text ?? '—'}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
