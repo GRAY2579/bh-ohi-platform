@@ -1,7 +1,16 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import * as XLSX from 'xlsx'
 import Nav from '../components/Nav'
 import { supabase } from '../lib/supabase'
+import {
+  CORE_QUESTIONS,
+  SENTINEL_QUESTIONS,
+  ANCHOR_QUESTION,
+  OPEN_ENDED_QUESTIONS,
+  DEMOGRAPHIC_FIELDS,
+  PILLARS,
+} from '../lib/constants'
 
 /* ── helpers ───────────────────────────────────────────────── */
 
@@ -394,6 +403,133 @@ export default function Dashboard() {
     } catch (err) { setError(err.message) } finally { setActionLoading(false) }
   }
 
+  /* ── Generate Report: multi-sheet .xlsx with raw answers ── */
+
+  const generateReport = async () => {
+    try {
+      setActionLoading(true)
+
+      // Pull everything we need
+      const { data: respList, error: e1 } = await supabase
+        .from('ohi_respondents')
+        .select('id, token, email, group_name, status, started_at, completed_at, duration_seconds, validity_flags, invited_at, reminder_sent_at')
+        .eq('engagement_id', id)
+      if (e1) throw e1
+
+      const { data: respRows, error: e2 } = await supabase
+        .from('ohi_responses')
+        .select('respondent_id, question_key, value_int, value_text')
+        .eq('engagement_id', id)
+      if (e2) throw e2
+
+      // Group answers by respondent_id → { question_key: value }
+      const byResp = {}
+      ;(respRows || []).forEach(r => {
+        if (!byResp[r.respondent_id]) byResp[r.respondent_id] = {}
+        byResp[r.respondent_id][r.question_key] = (r.value_int != null) ? r.value_int : r.value_text
+      })
+
+      // Question key lists
+      const likertKeys = [
+        ...CORE_QUESTIONS.map(q => q.key),
+        ...SENTINEL_QUESTIONS.map(q => q.key),
+        ANCHOR_QUESTION.key,
+      ]
+      const openKeys = OPEN_ENDED_QUESTIONS.map(q => q.key)
+      const demoKeys = DEMOGRAPHIC_FIELDS.map(f => f.key)
+
+      // Per-respondent pillar averages (excluding sentinels & anchor)
+      const pillarOf = (k) => {
+        const c = CORE_QUESTIONS.find(q => q.key === k)
+        return c ? c.pillar : null
+      }
+      const pillarAvg = (answers) => {
+        const sums = {}, counts = {}
+        Object.entries(answers || {}).forEach(([k, v]) => {
+          const p = pillarOf(k)
+          if (p && typeof v === 'number') {
+            sums[p] = (sums[p] || 0) + v
+            counts[p] = (counts[p] || 0) + 1
+          }
+        })
+        const out = {}
+        PILLARS.forEach(p => {
+          out[p.key] = counts[p.key] ? +(sums[p.key] / counts[p.key]).toFixed(2) : ''
+        })
+        return out
+      }
+
+      // Build "Responses" sheet — one row per respondent, wide format
+      const responsesSheet = (respList || []).map(r => {
+        const a = byResp[r.id] || {}
+        const row = {
+          respondent_id: r.id,
+          token: r.token,
+          email: r.email || '',
+          group: r.group_name || '',
+          status: r.status,
+          started_at: r.started_at || '',
+          completed_at: r.completed_at || '',
+          duration_seconds: r.duration_seconds || '',
+          validity_flags: Array.isArray(r.validity_flags) ? r.validity_flags.join('; ') : (r.validity_flags || ''),
+        }
+        demoKeys.forEach(k => { row['demo_' + k] = a[k] || '' })
+        likertKeys.forEach(k => { row[k] = (a[k] != null && a[k] !== '') ? a[k] : '' })
+        const avg = pillarAvg(a)
+        PILLARS.forEach(p => { row['avg_' + p.key] = avg[p.key] })
+        openKeys.forEach(k => { row[k] = a[k] || '' })
+        return row
+      })
+
+      // Build "Question Reference" sheet
+      const refRows = []
+      CORE_QUESTIONS.forEach(q => refRows.push({ key: q.key, type: 'Core (Likert 1-5)', pillar: q.pillar, text: q.text }))
+      SENTINEL_QUESTIONS.forEach(q => refRows.push({ key: q.key, type: 'Sentinel (Likert 1-5)', pillar: q.pillar, text: q.text }))
+      refRows.push({ key: ANCHOR_QUESTION.key, type: 'Anchor (Likert 1-5, reverse-coded)', pillar: '', text: ANCHOR_QUESTION.text })
+      OPEN_ENDED_QUESTIONS.forEach(q => refRows.push({ key: q.key, type: 'Open-ended', pillar: q.swotCategory || '', text: q.text }))
+      DEMOGRAPHIC_FIELDS.forEach(f => refRows.push({ key: 'demo_' + f.key, type: 'Demographic', pillar: '', text: f.label }))
+
+      // Build "Pillar Scores" sheet — one row per respondent
+      const pillarSheet = (respList || []).map(r => {
+        const a = byResp[r.id] || {}
+        const avg = pillarAvg(a)
+        return {
+          respondent_id: r.id,
+          email: r.email || '',
+          group: r.group_name || '',
+          status: r.status,
+          ...PILLARS.reduce((o, p) => ({ ...o, [p.name]: avg[p.key] }), {}),
+        }
+      })
+
+      // Build workbook
+      const wb = XLSX.utils.book_new()
+      const safeName = (engagement?.name || 'OHI').replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 50)
+
+      const wsResponses = XLSX.utils.json_to_sheet(responsesSheet)
+      // Auto-size columns (rough)
+      wsResponses['!cols'] = Object.keys(responsesSheet[0] || {}).map(k => ({ wch: Math.min(40, Math.max(10, k.length + 2)) }))
+      XLSX.utils.book_append_sheet(wb, wsResponses, 'Responses')
+
+      const wsPillars = XLSX.utils.json_to_sheet(pillarSheet)
+      XLSX.utils.book_append_sheet(wb, wsPillars, 'Pillar Scores')
+
+      const wsRef = XLSX.utils.json_to_sheet(refRows)
+      wsRef['!cols'] = [{ wch: 12 }, { wch: 28 }, { wch: 16 }, { wch: 80 }]
+      XLSX.utils.book_append_sheet(wb, wsRef, 'Question Reference')
+
+      const stamp = new Date().toISOString().slice(0, 10)
+      XLSX.writeFile(wb, `${safeName}_OHI_Raw_Data_${stamp}.xlsx`)
+
+      flash(`Report downloaded (${responsesSheet.length} respondents)`)
+    } catch (err) {
+      console.error(err)
+      setError(err.message || 'Report generation failed')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   /* ── email actions (SendGrid via Netlify Functions) ───── */
 
   const handleSendInvites = async () => {
@@ -641,7 +777,7 @@ export default function Dashboard() {
               </div>
 
               <button style={{ ...S.btnSm, background: '#92C0E9', color: '#fff', border: 'none' }} onClick={exportExcel} disabled={actionLoading}>Export Excel</button>
-              <button style={{ ...S.btnSm, background: '#1B8415', color: '#fff', border: 'none' }} onClick={() => flash('Report generation coming soon')}>Generate Report</button>
+              <button style={{ ...S.btnSm, background: '#1B8415', color: '#fff', border: 'none' }} onClick={generateReport} disabled={actionLoading}>Generate Report</button>
               <button style={{ ...S.btnSm, background: '#DC2626', color: '#fff', border: 'none' }} onClick={() => setShowDeleteConfirm(true)}>Delete</button>
             </div>
           </div>
